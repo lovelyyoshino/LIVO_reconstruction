@@ -1,7 +1,7 @@
 common:
-  lidar_topic:  "/cloud_registered"                  # From FASTLIO2
+  lidar_topic:  "/robot/dlio/odom_node/pointcloud/deskewed"                  # From FASTLIO2
   lidar_color_topic:  "/livox/color_lidar" #"/color_lidar"      # Pub color pointcloud
-  odom_topic:  "/Odometry"                             # From FASTLIO2
+  odom_topic:  "/robot/dlio/odom_node/odom"                             # From FASTLIO2
   camera_topic:  "/camera/color/image_raw"
   frame_id: "camera_init"                                   # From FASTLIO2 's  frame_link
 
@@ -18,4 +18,4 @@ mapping:
   ditortion: [-0.055537205189466476 , 0.06588292121887207 , -0.0013024559011682868  ,-0.0010083256056532264,  -0.02116576768457889]      # camera 畸变系数
 
 savepcd:
-  savePCDDirectory: "/livox_color_ws/src/livox_color/PCD/"
+  savePCDDirectory: "/catkin_ws/src/livox_color/PCD/"

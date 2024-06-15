@@ -274,17 +274,17 @@ int main(int argc, char **argv)
 	pubCloud = n.advertise<sensor_msgs::PointCloud2>(lidar_color_topic, 1);			
 
 	message_filters::Subscriber<nav_msgs::Odometry> path_sub_;  
-  message_filters::Subscriber<sensor_msgs::PointCloud2> points_sub_;
-  message_filters::Subscriber<sensor_msgs::Image> image_sub_;
+	message_filters::Subscriber<sensor_msgs::PointCloud2> points_sub_;
+	message_filters::Subscriber<sensor_msgs::Image> image_sub_;
 
 	path_sub_.subscribe(n, odom_topic, 1); 		 //  订阅FASTLIO2 的里程计输出 , queue 为1，维持为最新的数据
-  points_sub_.subscribe(n, lidar_topic, 1);	   //  订阅点云 pointcloud2格式
-  image_sub_.subscribe(n, camera_topic, 1);
+	points_sub_.subscribe(n, lidar_topic, 1);	   //  订阅点云 pointcloud2格式
+	image_sub_.subscribe(n, camera_topic, 1);
 
 	sync_.reset(new Sync(MySyncPolicy(100), path_sub_, points_sub_, image_sub_));			//  时间软同步最大容忍时间为100ms
-  sync_->registerCallback(boost::bind(&DataCallback,  _1, _2, _3));
+	sync_->registerCallback(boost::bind(&DataCallback,  _1, _2, _3));
 
-  srvSaveMap  = n.advertiseService("/save_map" ,  &saveMapService);   	    // saveMap  发布地图保存服务
+	srvSaveMap  = n.advertiseService("/save_map" ,  &saveMapService);   	    // saveMap  发布地图保存服务
 	ros::Rate loop_rate(200);
 
 	while (ros::ok())

@@ -29,19 +29,24 @@ make
 sudo make install
 ```
 
-livox_ros_driver
+
+
+~~直接自带，无需再安装livox_ros_driver~~
 
 ```
+mkdir -p ~/catkin_ws/src
 cd ~/catkin_ws/src
 git clone https://github.com/Livox-SDK/livox_ros_driver.git
 cd ~/catkin_ws && catkin_make
 ```
 
+
+
 Compile using the [`catkin_tools`](https://catkin-tools.readthedocs.io/en/latest/) package via:
 
 ```
-mkdir ws && cd ws && mkdir src && catkin init && cd src
-git clone https://github.com/lovelyyoshino/3DGS_LIVO_reconstruction.git
+cd ~/catkin_ws 
+git clone https://github.com/lovelyyoshino/3DGS_LIVO_reconstruction.git src
 catkin_make
 ```
 
