@@ -42,7 +42,7 @@ Compile using the [`catkin_tools`](https://catkin-tools.readthedocs.io/en/latest
 ```
 mkdir ws && cd ws && mkdir src && catkin init && cd src
 git clone https://github.com/lovelyyoshino/3DGS_LIVO_reconstruction.git
-catkin build
+catkin_make
 ```
 
 
@@ -77,7 +77,7 @@ for Livox sensors (`xfer_format: 1`).
 
 Be sure to change the topic names to your corresponding topics. Alternatively, edit the launch file directly if desired. If successful, you should see the following output in your terminal:
 
-[![drawing](C:\Users\pony\Desktop\Slam_Extra\catkin_make\src\terminal.png)](https://github.com/vectr-ucla/direct_lidar_inertial_odometry/blob/master/doc/img/terminal.png)
+[![drawing](terminal.png)]()
 
 ### 1.3Services
 
