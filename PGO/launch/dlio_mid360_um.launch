@@ -1,0 +1,58 @@
+<launch>
+
+    <param name="scan_line" type="int" value="16" />          <!--useless-->
+
+    <!-- if 1, do mapping 10 Hz, if 2, do mapping 5 Hz. Suggest to use 1, it will adjust frequence automaticlly -->
+    <param name="mapping_skip_frame" type="int" value="1" />  <!--useless-->
+
+    <!-- remove too closed points -->
+    <param name="minimum_range" type="double" value="0.1"/>  <!--useless-->
+
+    <param name="mapping_line_resolution" type="double" value="0.2"/>   <!--useless-->
+    <param name="mapping_plane_resolution" type="double" value="0.4"/>  <!--useless-->
+
+    <param name="mapviz_filter_size" type="double" value="1.0"/>
+
+    <!-- SC-A-LOAM -->
+    <param name="keyframe_meter_gap" type="double" value="5.0"/>
+    <param name="keyframe_deg_gap" type="double" value="5.0"/>
+
+    <!-- Scan Context -->
+    <param name="sc_dist_thres" type="double" value="0.4"/> <!-- SC-A-LOAM, if want no outliers, use 0.1-0.15 -->
+    <param name="sc_max_radius" type="double" value="20"/> <!-- 20 or 40 for indoor -->
+    <!-- <param name="sc_max_radius" type="double" value="80.0"/> for outdoor -->
+
+    <!-- loop closure -->
+    <param name="historyKeyframeSearchRadius" value="50"/>
+    <param name="historyKeyframeSearchTimeDiff" value=" 5.0"/>
+    <param name="historyKeyframeSearchNum" value="30"/>
+    <param name="speedFactor" value="3"/>           <!-- 倍速因子 -->
+    <param name="loopClosureFrequency" value="1.0"/> <!-- 应该相对于输入数据的频率 成比例 -->
+    <param name="graphUpdateFrequency" value="3"/>
+    <param name="graphUpdateTimes" value="3"/> <!-- 每次更新，ism->update的测试 -->
+    <param name="loopNoiseScore" value="0.3"/> <!-- 0.02 -->
+    <param name="vizmapFrequency" value="5"/>
+    <param name="loopFitnessScoreThreshold" value="0.3"/> <!-- ICP score -->
+    
+    
+    <param name="lidar_type" type="string" value="VLP16"/>          <!--useless-->
+    <remap from="/velodyne_points" to="/velodyne_points"/>         <!--useless-->
+    
+    <!-- input from FASTLIO2 -->
+    <remap from="/aft_mapped_to_init" to="/robot/dlio/odom_node/odom"/>
+    <remap from="/velodyne_cloud_registered_local" to="/robot/dlio/odom_node/pointcloud/deskewed"/>      <!--/robot/dlio/odom_node/pointcloud/deskewed     -->
+    <remap from="/cloud_for_scancontext" to="/cloud_registered_lidar"/>   <!--useless-->
+
+    <!-- utils -->
+    <param name="save_directory" type="string" value="$(env HOME)/iccv2023/dlio_ws/src/PGO/result/"/>  <!-- CHANGE THIS and end with / -->
+
+    <!-- nodes -->
+    <node pkg="aloam_velodyne" type="alaserPGO" name="alaserPGO" output="screen" /> <!-- Scan Context-based PGO -->
+
+    <!-- visulaization -->
+    <arg name="rviz" default="true" />
+    <group if="$(arg rviz)">
+        <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz_sc_pgo" args="-d $(find aloam_velodyne)/rviz_cfg/aloam_velodyne.rviz" />
+    </group>
+
+</launch>
