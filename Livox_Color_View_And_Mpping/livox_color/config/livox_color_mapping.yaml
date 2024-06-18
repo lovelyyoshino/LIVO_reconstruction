@@ -2,7 +2,7 @@ common:
   lidar_topic:  "/robot/dlio/odom_node/pointcloud/deskewed"                  # From FASTLIO2
   lidar_color_topic:  "/livox/color_lidar" #"/color_lidar"      # Pub color pointcloud
   odom_topic:  "/robot/dlio/odom_node/odom"                             # From FASTLIO2
-  camera_topic:  "/camera/color/image_raw"
+  camera_topic:  "/hikcamera/image"
   frame_id: "camera_init"                                   # From FASTLIO2 's  frame_link
 
 mapping:
