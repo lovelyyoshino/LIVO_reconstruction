@@ -3,11 +3,11 @@ sudo apt-get update
 sudo apt-get --fix-broken install
 sudo apt-get install wget
 sudo apt-get install git
+sudo apt-get install mlocate
 # install cuda toolkit and nvidia-prime
 # apt-get install nvidia-cuda-dev nvidia-cuda-toolkit nvidia-nsight nvidia-prime
 # install git, SuiteSparse, Lapack, BLAS etc
 sudo apt-get install libssl-dev libsuitesparse-dev liblapack-dev libblas-dev libgtk2.0-dev pkg-config libopenni-dev libusb-1.0-0-dev wget zip clang
-sudo apt-get install -y libboost-all-dev libtbb-dev
 sudo  apt-get update
 mkdir -p ~/third_party_for_slam
 cd ~/third_party_for_slam
@@ -121,13 +121,13 @@ make -j10
 sudo make install
 cd ../../
 
-
+sudo apt-get install -y libtbb-dev # libboost-all-dev
 # Get GTSAM source
 git clone https://bitbucket.org/gtborg/gtsam.git
 cd gtsam
 git checkout 4.0.0-alpha2
 mkdir build && cd build
-cmake -DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF -DGTSAM_WITH_EIGEN_MKL=OFF -DGTSAM_WITH_EIGEN_MKL_OPENMP=OFF ..
+cmake -DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF -DGTSAM_WITH_EIGEN_MKL=OFF -DGTSAM_WITH_EIGEN_MKL_OPENMP=OFF -DGTSAM_USE_SYSTEM_EIGEN=ON ..
 make -j16
 sudo make install
 cd ../../
