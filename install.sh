@@ -136,8 +136,9 @@ cd ../../
 # 删除原来错误的cmake版本：https://blog.csdn.net/qq_42731705/article/details/129379831
 # 多版本pcl：https://blog.csdn.net/qq_42731705/article/details/129380907
 git clone https://github.com/PointCloudLibrary/pcl.git
+cd pcl
 git checkout pcl-1.13.0
-cd pcl && mkdir build && cd build
+mkdir build && cd build
 cmake -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr \
            -DBUILD_GPU=ON -DBUILD_apps=ON -DBUILD_examples=ON \
            -DCMAKE_INSTALL_PREFIX=/usr ..

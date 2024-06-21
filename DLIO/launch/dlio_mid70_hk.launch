@@ -13,9 +13,10 @@
 <launch>
 
   <arg name="robot_namespace" default="robot"/>
-  <arg name="rviz" default="true"/>
+  <arg name="rviz" default="false"/>
 
-  <arg name="pointcloud_topic" default="/livox/lidar"/>
+  <arg name="pointcloud_topic" default="/livox2dlio"/>
+  <arg name="livox_topic" default="/livox/lidar"/>
   <arg name="imu_topic" default="/livox/imu"/>
 
   <!-- DLIO Odometry Node -->
@@ -27,6 +28,7 @@
 
     <!-- Subscriptions -->
     <remap from="~pointcloud" to="$(arg pointcloud_topic)"/>
+    <remap from="~livox" to="$(arg livox_topic)"/>
     <remap from="~imu" to="$(arg imu_topic)"/>
 
     <!-- Publications -->

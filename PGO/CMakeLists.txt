@@ -19,6 +19,14 @@ find_package(catkin REQUIRED COMPONENTS
   tf
 )
 
+find_package(Boost 1.54 REQUIRED COMPONENTS
+	system
+	thread
+	chrono
+  timer
+  serialization
+	)
+
 #find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 find_package(OpenCV REQUIRED)
@@ -44,13 +52,13 @@ catkin_package(
 
 
 add_executable(ascanRegistration src/scanRegistration.cpp)
-target_link_libraries(ascanRegistration ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+target_link_libraries(ascanRegistration ${Boost_LIBRARY} ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 
 add_executable(alaserOdometry src/laserOdometry.cpp)
-target_link_libraries(alaserOdometry ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
+target_link_libraries(alaserOdometry ${Boost_LIBRARY} ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
 
 add_executable(alaserMapping src/laserMapping.cpp)
-target_link_libraries(alaserMapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
+target_link_libraries(alaserMapping ${Boost_LIBRARY} ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
 
 add_executable(alaserPGO 
   src/laserPosegraphOptimization.cpp
@@ -61,6 +69,7 @@ target_compile_options(alaserPGO
 )
 target_link_libraries(alaserPGO 
   ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES}
+  ${Boost_LIBRARY}
   ${OpenMP_CXX_FLAGS}
   gtsam
 )
