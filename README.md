@@ -14,6 +14,9 @@ The following has been verified to be compatible, although other configurations 
 - Point Cloud Library >= `1.10.0`
 - Eigen >= `3.3.7`
 - GTSAM >= 4.0.0
+- Sophus
+
+目前所有依赖都已经用`install.sh`做进去了,只需要执行`bash install.sh`即可安装所有环境
 
 ### 1.2 Compiling
 
