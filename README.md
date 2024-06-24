@@ -33,7 +33,7 @@ sudo make install
 
 ~~直接自带，无需再安装livox_ros_driver~~
 
-```
+```bash
 mkdir -p ~/catkin_ws/src
 cd ~/catkin_ws/src
 git clone https://github.com/Livox-SDK/livox_ros_driver.git
@@ -44,7 +44,7 @@ cd ~/catkin_ws && catkin_make
 
 Compile using the [`catkin_tools`](https://catkin-tools.readthedocs.io/en/latest/) package via:
 
-```
+```bash
 cd ~/catkin_ws 
 git clone https://github.com/lovelyyoshino/3DGS_LIVO_reconstruction.git src
 catkin_make
@@ -54,57 +54,10 @@ catkin_make
 
 ### 1.3 Execution
 
-
-
 After compiling, source the workspace and execute via:
 
+```bash
+roslaunch fast_livo mapping_avia.launch
+rosbag play YOUR_DOWNLOADED.bag
 ```
-roslaunch direct_lidar_inertial_odometry dlio.launch \
-  rviz:={true, false} \
-  pointcloud_topic:=/robot/lidar \
-  imu_topic:=/robot/imu
-```
-
-
-
-for Ouster, Velodyne, Hesai, or Livox (`xfer_format: 0`) sensors, or
-
-```
-roslaunch direct_lidar_inertial_odometry dlio.launch \
-  rviz:={true, false} \
-  livox_topic:=/livox/lidar \
-  imu_topic:=/robot/imu
-```
-
-
-
-for Livox sensors (`xfer_format: 1`).
-
-Be sure to change the topic names to your corresponding topics. Alternatively, edit the launch file directly if desired. If successful, you should see the following output in your terminal:
-
-[![drawing](terminal.png)]()
-
-### 1.3Services
-
-
-
-To save DLIO's generated map into `.pcd` format, call the following service:
-
-```
-rosservice call /robot/dlio_map/save_pcd LEAF_SIZE SAVE_PATH
-```
-
-
-
-### 1.4 Test Data
-
-For your convenience, we provide test data [here](https://drive.proton.me/urls/Z83QCWKZWW#bMIqDh02AJZZ) (1.2GB, 1m 13s, Ouster OS1-32) of an aggressive motion to test our motion correction scheme, and [here](https://drive.proton.me/urls/7NQSK9DXJ0#gZ9yjGNrDBgG) (16.5GB, 4m 21s, Ouster OSDome) of a longer trajectory outside with lots of trees. Try these two datasets with both deskewing on and off!
-
-
-
-# 2. Livox点云标定
-
-
-
-# 3. Livox点云上色
 
