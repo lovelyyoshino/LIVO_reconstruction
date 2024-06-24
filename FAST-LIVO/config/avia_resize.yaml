@@ -15,39 +15,42 @@ ncc_en: false
 ncc_thre: 0
 img_point_cov : 100 # 1000
 laser_point_cov : 0.001 # 0.001
-cam_fx: 431.795259219
-cam_fy: 431.550090267
-cam_cx: 310.833037316
-cam_cy: 266.985989326
+cam_fx: 1858.851674 
+cam_fy: 689.121011
+cam_cx: 1850.424325
+cam_cy: 525.758177
 
 common:
     lid_topic:  "/livox/lidar"
     imu_topic:  "/livox/imu"
 
 preprocess:
-    lidar_type: 1 # 1:Livox Avia LiDAR  2:VELO16  3:OUST64  4:XT32 
-    scan_line: 6 # 16  64  32
+    lidar_type: 1 # Livox Avia LiDAR
+    scan_line: 6
     blind: 5 # blind x m disable
 
 mapping:
     acc_cov_scale: 100
     gyr_cov_scale: 10000
-    fov_degree:    90 # 360
+    fov_degree:    90
     extrinsic_T: [ 0.04165, 0.02326, -0.0284 ]
     extrinsic_R: [ 1, 0, 0,
                    0, 1, 0,
                    0, 0, 1]
 
-pcd_save:
-    pcd_save_en: true
-
 camera:
     # img_topic: /usb_cam/image_raw
     # img_topic:  /camera/image_color
-    img_topic: /left_camera/image
+    img_topic: /hikcamera/image
     #xiyuan
-    Rcl: [0.00162756,-0.999991,0.00390957,
-         -0.0126748,-0.00392989,-0.999912,
-          0.999918,0.00157786,-0.012681]
-    Pcl: [0.0409257, 0.0318424, -0.0927219]
-    
+    Rcl: [0.0229839, -0.9995804, -0.0176269,
+          0.0050647,  0.0177477, -0.9998296, 
+          0.9997230,  0.0228907,  0.0054705]
+    Pcl: [-0.058, -0.015, 0.03] 
+
+    # Rcl: [0.0229839,   0.0050647,   0.999723,
+    #        -0.9995804,  0.0177477,   0.0228907, 
+    #       -0.0176269, -0.9998296,   0.0054705]
+    # Pcl: [-0.03007364,0.05790748,-0.01464129] 
+
+
