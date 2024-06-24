@@ -1045,7 +1045,7 @@ void LidarSelector::detect(cv::Mat img, PointCloudXYZI::Ptr pg)
     {
         // std::cout<<"Resize the img scale !!!"<<std::endl;
         double scale = 0.5;
-        cv::resize(img,img,cv::Size(img.cols*scale,img.rows*scale),0,0,CV_INTER_LINEAR);
+        cv::resize(img,img,cv::Size(img.cols*scale,img.rows*scale),0,0,cv::INTER_LINEAR);
     }
     img_rgb = img.clone();
     img_cp = img.clone();
