@@ -146,6 +146,20 @@ make -j16
 sudo make install
 cd ../../
 
+
+git clone https://github.com/strasdat/Sophus.git
+cd Sophus
+git checkout a621ff
+# 自动修改代码
+cd sophus
+sed -i 's/unit_complex_.real() = 1\./unit_complex_.real(1\.)/' so2.cpp
+sed -i 's/unit_complex_.imag() = 0\./unit_complex_.imag(0\.)/' so2.cpp
+cd ..
+mkdir build && cd build && cmake ..
+make -j16
+sudo make install
+cd ../../
+
 sudo apt-get update
 sudo apt-get install ros-noetic-pcl-ros
 sudo apt-get install ros-noetic-cv-bridge
