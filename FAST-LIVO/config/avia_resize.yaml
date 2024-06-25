@@ -13,11 +13,11 @@ lidar_enable : 1
 outlier_threshold : 300 # 78 100 156
 ncc_en: false
 ncc_thre: 0
-img_point_cov : 100 # 1000
+img_point_cov : 1000 # 1000
 laser_point_cov : 0.001 # 0.001
 cam_fx: 1858.851674 
-cam_fy: 689.121011
-cam_cx: 1850.424325
+cam_fy: 1850.424325
+cam_cx: 689.121011
 cam_cy: 525.758177
 
 common:
