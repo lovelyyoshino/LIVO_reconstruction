@@ -13,10 +13,10 @@ The following has been verified to be compatible, although other configurations 
 - OpenMP >= `4.5`
 - Point Cloud Library >= `1.10.0`
 - Eigen >= `3.3.7`
-- GTSAM >= 4.0.0
+- GTSAM >= `4.0.0`
+- Sophus
 
 ### 1.2 Compiling
-
 
 
 Livox
