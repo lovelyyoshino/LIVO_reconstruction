@@ -1,4 +1,4 @@
-# 1. DLIO-PGO
+# 1. 3DGS_LIVO_reconstruction
 
 ### 1.1 Dependencies
 
