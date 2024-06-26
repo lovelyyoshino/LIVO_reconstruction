@@ -27,6 +27,14 @@ namespace lidar_selection {
 typedef Matrix<double, 2, 3> Matrix23d;
 
 /// A 3D point on the surface of the scene.
+/* boost::noncopyable
+ * 通常情况下, 要写一个单例类就要在类的声明把它们的构造函数, 赋值函数, 析构函数, 拷贝构造函数隐藏到 private 或者 protected 之中, 每个类都这么干的话会非常地麻烦
+ * 但是有了 noncopyable 类之后, 只要让单例类直接继承 noncopyable, 一切都会迎刃而解
+ * class noncopyable 的基本思想是把构造函数和析构函数设置 protected 权限，这样子类可以调用，但是外面的类不能调用，
+ * 那么当子类需要定义构造函数的时候不至于通不过编译。但是最关键的是noncopyable 把拷贝构造函数和拷贝赋值函数做成了 private，
+ * 这就意味着 除非子类定义自己的copy构造和赋值函数，否则在子类没有定义的情况下，外面的调用者是不能够通过赋值和copy构造等手段来产生一个新的子类对象的。
+ * eg. Point t(2); Point p = t;(cannot); Point p(t);(cannot)
+ * */
 class Point : boost::noncopyable
 {
 public:

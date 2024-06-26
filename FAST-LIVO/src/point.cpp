@@ -100,9 +100,9 @@ void Point::deleteFeatureRef(FeaturePtr ftr)
 void Point::initNormal()
 {
   assert(!obs_.empty());
-  const FeaturePtr ftr = obs_.back();
+  const FeaturePtr ftr = obs_.back();//最后一个观测到的特征点
   assert(ftr->frame != nullptr);
-  normal_ = ftr->frame->T_f_w_.rotation_matrix().transpose()*(-ftr->f);
+  normal_ = ftr->frame->T_f_w_.rotation_matrix().transpose()*(-ftr->f);//f代表特征点的位置
   normal_information_ = DiagonalMatrix<double,3,3>(pow(20/(pos_-ftr->frame->pos()).norm(),2), 1.0, 1.0);
   normal_set_ = true;
 }
@@ -138,20 +138,31 @@ bool Point::getClosePose(const FramePtr& new_frame, FeaturePtr& ftr) const
   return true;
 }
 
+/**
+ * @brief 传入相机系的原点，计算当前点Point和相机系观测的方向最近的那个点
+ * 
+ * @param[in] framepos 相机系的位置
+ * @param[in] ftr 传出参数，最近的观测点
+ * @param[in] cur_px  没有用到
+ * @return true 
+ * @return false 
+ */
 bool Point::getCloseViewObs(const Vector3d& framepos, FeaturePtr& ftr, const Vector2d& cur_px) const
 {
   // TODO: get frame with same point of view AND same pyramid level!
+  //; 如果当前点没有观测的patch，那么直接退出
   if(obs_.size() <= 0) return false;
 
-  Vector3d obs_dir(framepos - pos_); obs_dir.normalize();
+  Vector3d obs_dir(framepos - pos_); obs_dir.normalize();//; 当前point在相机系下的观测方向，注意仍然是在world系下表示的
   auto min_it=obs_.begin();
   double min_cos_angle = 0;
 
   for(auto it=obs_.begin(), ite=obs_.end(); it!=ite; ++it)
   {
-    Vector3d dir((*it)->T_f_w_.inverse().translation() - pos_); dir.normalize();
+     //; (*it)->T_f_w_.inverse().translation()是这个观测的patch的图像的相机系在world系下的位置
+    Vector3d dir((*it)->T_f_w_.inverse().translation() - pos_); dir.normalize();//; 这个patch对地图点的观测方向
     double cos_angle = obs_dir.dot(dir);
-    if(cos_angle > min_cos_angle)
+    if(cos_angle > min_cos_angle)// 寻找最近的观测角度的patch
     {
       min_cos_angle = cos_angle;
       min_it = it;
@@ -167,7 +178,8 @@ bool Point::getCloseViewObs(const Vector3d& framepos, FeaturePtr& ftr, const Vec
   //   ROS_ERROR("The pixel dist exceeds 200.");
   //   return false;    
   // }
-    
+
+  //; 如果观测角度 > 60度，那么也不要这个观测
   if(min_cos_angle < 0.5) // assume that observations larger than 60° are useless 0.5
   {
     // ROS_ERROR("The obseved angle is larger than 60°.");

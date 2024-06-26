@@ -2,19 +2,19 @@ feature_extract_enable : 0
 point_filter_num : 2
 max_iteration : 10
 dense_map_enable : 1
-filter_size_surf : 0.15
-filter_size_map : 0.3
+filter_size_surf : 0.15 # 建议室内：0.05~0.15；室外：0.3~0.5。这代表了地图表面点云的稠密程度，值越大，地图表面点云越稀疏。
+filter_size_map : 0.3 #建议室内：0.15~0.3；室外：0.4~0.5。这代表了地图点云的稠密程度，值越大，地图点云越稀疏。
 cube_side_length : 20
 debug : 0
 grid_size : 40
 patch_size : 8
 img_enable : 1
 lidar_enable : 1
-outlier_threshold : 300 # 78 100 156
+outlier_threshold : 300 # 78 100 156 建议较暗的场景为50~250，较亮的场景为500~1000。该值越小，vio子模块越快，但抗退化能力越弱。
 ncc_en: false
 ncc_thre: 0
-img_point_cov : 1000 # 1000
-laser_point_cov : 0.001 # 0.001
+img_point_cov : 1000 # 1000  对于每个像素的光度误差的协方差。
+laser_point_cov : 0.001 # 0.001 激光点云的点到平面的距离误差的协方差。
 cam_fx: 1858.851674 
 cam_fy: 1850.424325
 cam_cx: 689.121011

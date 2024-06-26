@@ -35,7 +35,7 @@ using namespace Sophus;
 #define DIM_PROC_N (12)      // Dimension of process noise (Let Dim(SO(3)) = 3)
 #define CUBE_LEN  (6.0)
 #define LIDAR_SP_LEN    (2)
-#define INIT_COV   (0.001)
+#define INIT_COV   (0.001)//初始的协方差大小
 #define NUM_MATCH_POINTS    (5)
 #define MAX_MEAS_DIM        (10000)
 
@@ -78,10 +78,11 @@ namespace lidar_selection
 {
     class Point;
     typedef std::shared_ptr<Point> PointPtr;
-    class VOXEL_POINTS
+    /// @brief 体素，其中存储了很多地图点
+    class VOXEL_POINTS 
     {
     public:
-        std::vector<PointPtr> voxel_points;
+        std::vector<PointPtr> voxel_points;// 这个体素中存储的地图点
         int count;
         // bool is_visited;
 
@@ -95,7 +96,7 @@ namespace lidar_selection
         int search_level;
         // bool is_visited;
 
-        Warp(int level, Matrix2d warp_matrix): search_level(level), A_cur_ref(warp_matrix){} 
+        Warp(int level, Eigen::Matrix2d warp_matrix) : search_level(level), A_cur_ref(warp_matrix) {} //; 体素，其中存储了很多地图点arch_level(level), A_cur_ref(warp_matrix){} 
     }; 
 }
 
@@ -146,6 +147,7 @@ namespace std
   };
 }
 
+//有图像相对第一个点云开始的时间，预计分用到的IMU的队列，图像本身，主要用来放之间的IMU数据
 struct MeasureGroup     
 {
     double img_offset_time;
@@ -157,13 +159,14 @@ struct MeasureGroup
     };
 };
 
+/// @brief 同步的数据结构
 struct LidarMeasureGroup
 {
-    double lidar_beg_time;
+    double lidar_beg_time;//一帧lidar开始的绝对时间戳
     double last_update_time;
-    PointCloudXYZI::Ptr lidar;
+    PointCloudXYZI::Ptr lidar;//放一帧雷达点云
     std::deque<struct MeasureGroup> measures;
-    bool is_lidar_end;
+    bool is_lidar_end;//标志收集好一次IMU信息后，是否是以雷达结束的，而不是相机
     int lidar_scan_index_now;
     LidarMeasureGroup()
     {
@@ -197,6 +200,7 @@ struct LidarMeasureGroup
 //     vector<cv::Mat> imgs;
 // };
 
+/// @brief 稀疏地图类
 struct SparseMap
 {
     vector<V3D> points;
@@ -207,8 +211,8 @@ struct SparseMap
     vector<V3D> P_ref;
     vector<V3D> xyz_ref;
     vector<V2D> px;
-    M3D Rcl;
-    V3D Pcl;
+    M3D Rcl;//相机到lidar的旋转矩阵
+    V3D Pcl;//相机到lidar的平移向量
     SparseMap()
     {
         this->points.clear();
@@ -223,6 +227,9 @@ struct SparseMap
         this->Pcl = Zero3d;
     } ;
 
+    /// @brief 设置相机到lidar的变换矩阵
+    /// @param R 对应的旋转矩阵
+    /// @param P 对应的平移向量
     void set_camera2lidar(vector<double>& R,  vector<double>& P )
     {
         this->Rcl << MAT_FROM_ARRAY(R);
@@ -277,12 +284,13 @@ struct SparseMap
 
 namespace lidar_selection
 {
+    /// @brief 稀疏子地图类
     struct SubSparseMap
     {
         vector<float> align_errors;
         vector<float> propa_errors;
         vector<float> errors;
-        vector<int> index;
+        vector<int> index; //最后选择的地图点投影到图像上之后，所在的网格的索引
         vector<float*> patch;
         vector<float*> patch_with_border;
         vector<V2D> px_cur;
@@ -341,6 +349,7 @@ namespace lidar_selection
 }
 typedef boost::shared_ptr<SparseMap> SparseMapPtr;
 
+/// @brief 用来存储一帧的状态信息,包括旋转矩阵，位置，速度，偏置等.对应论文里面的全局状态量
 struct StatesGroup
 {
     StatesGroup() {
@@ -350,7 +359,7 @@ struct StatesGroup
         this->bias_g  = Zero3d;
         this->bias_a  = Zero3d;
         this->gravity = Zero3d;
-        this->cov     = Matrix<double,DIM_STATE,DIM_STATE>::Identity() * INIT_COV;
+        this->cov     = Matrix<double,DIM_STATE,DIM_STATE>::Identity() * INIT_COV;//18 * 18 的单位协方差，开始是0.001
 	};
 
     StatesGroup(const StatesGroup& b) {

@@ -159,7 +159,7 @@ bool flg_EKF_inited, flg_EKF_converged, EKF_stop_flg = 0;
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr cube_points_add(new PointCloudXYZI());
 PointCloudXYZI::Ptr map_cur_frame_point(new PointCloudXYZI());
-PointCloudXYZI::Ptr sub_map_cur_frame_point(new PointCloudXYZI());
+PointCloudXYZI::Ptr sub_map_cur_frame_point(new PointCloudXYZI()); //当前图像用的视觉地图点，很稀疏的点云
 
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());
@@ -189,14 +189,14 @@ Eigen::Matrix3d Rcl;
 Eigen::Vector3d Pcl;
 
 //estimator inputs and output;
-LidarMeasureGroup LidarMeasures;
+LidarMeasureGroup LidarMeasures; // 同步之后的消息
 // SparseMap sparse_map;
 #ifdef USE_IKFOM
 esekfom::esekf<state_ikfom, 12, input_ikfom> kf;
 state_ikfom state_point;
 vect3 pos_lid;
 #else
-StatesGroup  state;
+StatesGroup  state;//全局变量 18维状态量
 #endif
 
 nav_msgs::Path path;
@@ -204,6 +204,7 @@ nav_msgs::Odometry odomAftMapped;
 geometry_msgs::Quaternion geoQuat;
 geometry_msgs::PoseStamped msg_body_pose;
 
+//这个应该是lidar的前端特征点云的预处理类，主要是对lidar的点云进行稍微的处理（但是和提取平面特征又不完全一样）
 shared_ptr<Preprocess> p_pre(new Preprocess());
 
 PointCloudXYZRGB::Ptr pcl_wait_save(new PointCloudXYZRGB());  //add save rbg map
@@ -266,6 +267,9 @@ void pointBodyToWorld_ikfom(PointType const * const pi, PointType * const po, st
 }
 #endif
 
+/// @brief 把局部坐标系下的点，通过全局维护的位姿变量投影到世界坐标系下
+/// @param pi 输入点
+/// @param po 输出点
 void pointBodyToWorld(PointType const * const pi, PointType * const po)
 {
     V3D p_body(pi->x, pi->y, pi->z);
@@ -357,6 +361,7 @@ BoxPointType get_cube_point(float xmin, float ymin, float zmin, float xmax, floa
 #ifndef USE_ikdforest
 BoxPointType LocalMap_Points;
 bool Localmap_Initialized = false;
+/// @brief 过滤在当前LiDAR的FOV内的点云
 void lasermap_fov_segment()
 {
     cub_needrm.clear();
@@ -441,8 +446,11 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     sig_buffer.notify_all();
 }
 
+/// @brief  livox激光雷达的消息回调函数
+/// @param msg 激光雷达消息
 void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg) 
 {
+    //数据加锁，说明IMU Lidar camera同时只有一个数据能放buffer
     mtx_buffer.lock();
     if (msg->header.stamp.toSec() < last_timestamp_lidar)
     {
@@ -451,15 +459,18 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
     }
     printf("[ INFO ]: get point cloud at time: %.6f.\n", msg->header.stamp.toSec());
     PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
-    p_pre->process(msg, ptr);
+    // 对收到的原始点云进行一些预处理，得到后面要使用的面点
+    p_pre->process(msg, ptr);// 把livox数据转成pcl点云
     lidar_buffer.push_back(ptr);
-    time_buffer.push_back(msg->header.stamp.toSec());
+    time_buffer.push_back(msg->header.stamp.toSec());//把时间也放入time_buffer
     last_timestamp_lidar = msg->header.stamp.toSec();
 
-    mtx_buffer.unlock();
+    mtx_buffer.unlock();//把时间也放入time_buffer
     sig_buffer.notify_all();
 }
 
+/// @brief  IMU消息的回调函数：存储IMU消息到buf中
+/// @param msg_in IMU消息
 void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) 
 {
     publish_count ++;
@@ -467,7 +478,7 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
     
     double timestamp = msg->header.stamp.toSec();
-    mtx_buffer.lock();
+    mtx_buffer.lock();//数据加锁
 
     if (timestamp < last_timestamp_imu)
     {
@@ -481,15 +492,27 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     imu_buffer.push_back(msg);
     // cout<<"got imu: "<<timestamp<<" imu size "<<imu_buffer.size()<<endl;
     mtx_buffer.unlock();
-    sig_buffer.notify_all();
+    sig_buffer.notify_all();//唤醒wait线程
 }
 
+/**
+ * @brief 从ros消息中把图像数据转成cv::Mat类型
+ *  参考博客：https://blog.csdn.net/bigdog_1027/article/details/79090571
+ *  https://zhuanlan.zhihu.com/p/392285419
+ */
 cv::Mat getImageFromMsg(const sensor_msgs::ImageConstPtr& img_msg) {
   cv::Mat img;
-  img = cv_bridge::toCvCopy(img_msg, "bgr8")->image;
+    // cv_bridge::toCvShare(img_msg, "bgr8") 是一个cv_bridge::CvImagePtr类型的指针，
+    // 这里用的是匿名对象的写法，然后直接调用这个指针的成员变量 image，就得到了对应的cv::Mat类型的数据
+    img = cv_bridge::toCvShare(img_msg, "bgr8")->image;
+    // 下面这个修改是github上一个人提的issue说的，说图片比较大的时候使用toCvShare容易出问题，
+    // 但是作者说测试过最大500w像素的图片没有出问题，因此没有采纳这个issue的建议
+    // img = cv_bridge::toCvCopy(img_msg, "bgr8")->image;
   return img;
 }
 
+/// @brief 图像消息时间戳
+/// @param msg 图像消息
 void img_cbk(const sensor_msgs::ImageConstPtr& msg)
 {
     // cout<<"In Img_cbk"<<endl;
@@ -510,7 +533,7 @@ void img_cbk(const sensor_msgs::ImageConstPtr& msg)
     mtx_buffer.lock();
     // cout<<"Lidar_buff.size()"<<lidar_buffer.size()<<endl;
     // cout<<"Imu_buffer.size()"<<imu_buffer.size()<<endl;
-    img_buffer.push_back(getImageFromMsg(msg));
+    img_buffer.push_back(getImageFromMsg(msg));//转换为mat格式
     img_time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_img = msg->header.stamp.toSec();
     // cv::imshow("img", img);
@@ -520,12 +543,29 @@ void img_cbk(const sensor_msgs::ImageConstPtr& msg)
     sig_buffer.notify_all();
 }
 
+/**
+ * @brief 以LiDAR时间戳为一次处理前提的数据包对齐。
+ *          LiDAR时间戳：   |            |           |   （注意以一帧点云结尾时间戳为准）
+ *                         1            2           3
+ *           相机时间戳 ：      |   |   |   |   |   |   |
+ *                            1   2   3   4   5   6   7
+ * 两种情况：1. 当前最新帧就是LiDAR，没有更老的图像，比如上面第1帧lidar，那么同步的方法和LIO一样，非常简单
+ *         2. 当前必须有一个LIDAR，比如上面第2帧lidar。但是LiDAR前面有一些更老的图像没有处理，比如
+ *            第1、2、3帧图像，那么此时就要先同步这三帧图像。但是显然这种方法对图像的处理是有一些滞后的， 
+ *            因为它要求必须有了一帧LiDAR才能对 比这帧LiDAR更老的图像进行处理。不过lidar是10hz，也不会
+ *            滞后太多，因此问题也不大。
+ * @param[in] meas  一次处理的数据包
+ * @return true 
+ * @return false 
+ */
 bool sync_packages(LidarMeasureGroup &meas)
 {
     if ((lidar_buffer.empty() && img_buffer.empty())) { // has lidar topic or img topic?
         return false;
     }
-    // ROS_ERROR("In sync");
+    // If meas.is_lidar_end==true, means it just after scan end, clear all buffer in meas. 一次扫描结束
+    //; 如果上次同步的消息是以lidar为结尾的，说明上次处理了一帧以lidar为结尾的数据，那么这次统计
+    //; 图像数据的时候就要先清空了，因为measures里面存储的是以上一帧LiDAR为结尾的多帧的图像数据和IMU数据
     if (meas.is_lidar_end) // If meas.is_lidar_end==true, means it just after scan end, clear all buffer in meas.
     {
         meas.measures.clear();
@@ -533,11 +573,27 @@ bool sync_packages(LidarMeasureGroup &meas)
     }
     
     if (!lidar_pushed) { // If not in lidar scan, need to generate new meas
+        //! 疑问：这里这种时间戳对齐要求当前对齐一帧图像或者LiDAR数据的时候，必须有LiDAR数据存在。
+        // 也就是视觉的数据会被延迟最大0.1s处理。比如图像是30hz, LiDAR是10hz，他们都经过硬件时间同步，
+        // 也就是时间戳是完全准确的，没有任何时间偏移。如下图所示：
+        //                                    1           2           3
+        //    LiDAR时间戳：   |           |           | 
+        //    相机时间戳：       |   |   |   |   |   |   |
+        //                                 1   2   3   4   5   6   7
+        // (1)假设LiDAR先来，那么后面会先把第1帧LiDAR处理掉。
+        // (2)第二次同步的时候进入当前if分支，发现LiDAR是空的，那么直接返回。此时即使有几帧相机数据，
+        //    但是由于没有第2帧的LiDAR数据，所以这里仍然不会处理相机数据，而是要等到第2帧LiDAR数据
+        //    来了之后才会往下进行。往下进行发现有一些比第2帧LiDAR数据更老的图像数据，也就是相机的
+        //    前3帧都没有被处理，所以此时才会处理这3帧图像数据。处理完这3帧图像数据之后，然后继续
+        //    处理第2帧的LiDAR数据。
+        //; 另外注意：这里的lidar时间戳是以一帧的结束为标准的，因为后面去畸变是把一帧点云对齐到结尾
         if (lidar_buffer.empty()) {
             // ROS_ERROR("out sync");
             return false;
         }
-        meas.lidar = lidar_buffer.front(); // push the firsrt lidar topic
+        //这里的LiDAR是单独存成了PCL点云格式，所以后面用一个单独的time_buffer来存储它的时间戳了
+        meas.lidar = lidar_buffer.front(); // push the firsrt lidar topic       
+        //; 如果这帧lidar点云无效，则要弹出图像数据。但是这个地方正常来说应该不会发生？
         if(meas.lidar->points.size() <= 1)
         {
             mtx_buffer.lock();
@@ -551,14 +607,18 @@ bool sync_packages(LidarMeasureGroup &meas)
             // ROS_ERROR("out sync");
             return false;
         }
-        sort(meas.lidar->points.begin(), meas.lidar->points.end(), time_list); // sort by sample timestamp
-        meas.lidar_beg_time = time_buffer.front(); // generate lidar_beg_time
-        lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000); // calc lidar scan end time
-        lidar_pushed = true; // flag
+        sort(meas.lidar->points.begin(), meas.lidar->points.end(), time_list);  //对lidar中的点云根据时间戳进行排序
+        // generate lidar_beg_time // 雷达开始时间
+        //! 疑问：这个地方感觉和前面 lidar_buffer.pop_front(); 不同步？但是正常来说前面的问题应该不会发生
+        meas.lidar_beg_time = time_buffer.front(); // 把点云开始时间也赋上，用于后续的时间戳对齐
+        //最后点的时间戳加上曲率，得到点云结束时间
+        lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000); //  计算雷达扫描结束时间
+        lidar_pushed = true;  //lidar_pushed 表示meas中的lidar点云插入了，但是还没有从buf中弹出
     }
 
+    //没图像，只有雷达数据，收集IMU信息
     if (img_buffer.empty()) { // no img topic, means only has lidar topic
-        if (last_timestamp_imu < lidar_end_time+0.02) { // imu message needs to be larger than lidar_end_time, keep complete propagate.
+        if (last_timestamp_imu < lidar_end_time+0.02) {  // lidar_pushed 表示meas中的lidar点云插入了，但是还没有从buf中弹出
             // ROS_ERROR("out sync");
             return false;
         }
@@ -566,26 +626,32 @@ bool sync_packages(LidarMeasureGroup &meas)
         double imu_time = imu_buffer.front()->header.stamp.toSec();
         m.imu.clear();
         mtx_buffer.lock();
+        //把小于最后一个雷达点云的IMU都放进去m中
         while ((!imu_buffer.empty() && (imu_time<lidar_end_time))) {
             imu_time = imu_buffer.front()->header.stamp.toSec();
             if(imu_time > lidar_end_time) break;
             m.imu.push_back(imu_buffer.front());
             imu_buffer.pop_front();
         }
+        //现在真正统计完一次以LiDAR为结尾的数据了，所以要把LiDAR消息和对应的时间戳弹出
         lidar_buffer.pop_front();
         time_buffer.pop_front();
         mtx_buffer.unlock();
         sig_buffer.notify_all();
-        lidar_pushed = false; // sync one whole lidar scan.
-        meas.is_lidar_end = true; // process lidar topic, so timestamp should be lidar scan end.
+        // lidar_pushed=true，说明 meas 插入了LiDAR消息，但是还没有同步完成，也就是在buffer中还有这个lidar消息
+        // 而如果=fasle，说明 meas 插入了LIDAR消息并且同步完成了，也就是buffer中已经弹出这个消息了
+        lidar_pushed = false; //这个标志用来控制每次收集好了IMU信息后，下一次就是放雷达点云了
+        meas.is_lidar_end = true; //说明已经把雷达点云前的IMU放入了，当前的meas是以雷达结束的
         meas.measures.push_back(m);
         // ROS_ERROR("out sync");
         return true;
     }
-    struct MeasureGroup m;
+    struct MeasureGroup m;//; 运行到这里，说明图像不为空，则要同时统计图像和LiDAR的时间戳
     // cout<<"lidar_buffer.size(): "<<lidar_buffer.size()<<" img_buffer.size(): "<<img_buffer.size()<<endl;
     // cout<<"time_buffer.size(): "<<time_buffer.size()<<" img_time_buffer.size(): "<<img_time_buffer.size()<<endl;
     // cout<<"img_time_buffer.front(): "<<img_time_buffer.front()<<"lidar_end_time: "<<lidar_end_time<<"last_timestamp_imu: "<<last_timestamp_imu<<endl;
+    
+    //有图像topic，但是图像队列头的时间戳已经大于雷达队列头时间戳，说明还是处理雷达数据，和上面一样。
     if ((img_time_buffer.front()>lidar_end_time) )
     { // has img topic, but img topic timestamp larger than lidar end time, process lidar topic.
         if (last_timestamp_imu < lidar_end_time+0.02) 
@@ -610,7 +676,7 @@ bool sync_packages(LidarMeasureGroup &meas)
         lidar_pushed = false;
         meas.is_lidar_end = true;
         meas.measures.push_back(m);
-    }
+    }//相当于处理目前雷达时间前，每个相机间隔间的IMU信息
     else 
     {
         double img_start_time = img_time_buffer.front(); // process img topic, record timestamp
@@ -636,60 +702,11 @@ bool sync_packages(LidarMeasureGroup &meas)
         mtx_buffer.unlock();
         sig_buffer.notify_all();
         meas.is_lidar_end = false; // has img topic in lidar scan, so flag "is_lidar_end=false" 
+        //这里可以发现没有对measures之前的图像数据清空，也就是当前帧LiDAR之前的多帧图像每次同步
+        //都会被放到measures里面。后面看一下处理的时候怎么做的，肯定不会重复处理
         meas.measures.push_back(m);
     }
-    // ROS_ERROR("out sync");
     return true;
-    // if (lidar_buffer.empty() || imu_buffer.empty()) {
-    //     return false;
-    // }
-
-    // /*** push a lidar scan ***/
-    // if(!lidar_pushed)
-    // {
-    //     meas.lidar = lidar_buffer.front();
-    //     if(meas.lidar->points.size() <= 1)
-    //     {
-    //         lidar_buffer.pop_front();
-    //         return false;
-    //     }
-    //     meas.lidar_beg_time = time_buffer.front();
-    //     lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
-    //     lidar_pushed = true;
-    // }
-
-    // if (last_timestamp_imu < lidar_end_time)
-    // {
-    //     return false;
-    // }
-
-    // /*** push imu data, and pop from imu buffer ***/
-    // double imu_time = imu_buffer.front()->header.stamp.toSec();
-    // meas.imu.clear();
-    // while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))
-    // {
-    //     imu_time = imu_buffer.front()->header.stamp.toSec();
-    //     if(imu_time > lidar_end_time + 0.02) break;
-    //     meas.imu.push_back(imu_buffer.front());
-    //     imu_buffer.pop_front();
-    // }
-    // meas.img.clear();
-    // cout<<"lidar_end_time"<<setprecision(15)<<lidar_end_time<<endl;
-    // cout<<"meas.lidar_beg_time:"<<meas.lidar_beg_time<<endl;
-    // double img_time = img_buffer.front()->header.stamp.toSec();
-    // while ((!img_buffer.empty()) && (img_time < lidar_end_time))
-    // {
-    //     img_time = img_buffer.front()->header.stamp.toSec();
-    //     cout<<"img_buffer.size():"<<img_buffer.size()<<endl;
-    //     cout<<"img_time:"<<setprecision(15)<<img_time<<endl;
-    //     if(img_time > lidar_end_time + 0.02) break;
-    //     meas.img.push_back(img_buffer.front());
-    //     img_buffer.pop_front();
-    // }
-    // cout<<"meas.img.size():"<<meas.img.size()<<endl;
-    // lidar_buffer.pop_front();
-    // time_buffer.pop_front();
-    // lidar_pushed = false;
 }
 
 void map_incremental()
@@ -709,7 +726,7 @@ void map_incremental()
 }
 
 // PointCloudXYZRGB::Ptr pcl_wait_pub_RGB(new PointCloudXYZRGB(500000, 1));
-PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI());
+PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI());//在一次LIO优化后，当前LiDAR帧的点云转到世界坐标系下的点云
 void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes, lidar_selection::LidarSelectorPtr lidar_selector)
 {
     // PointCloudXYZI::Ptr laserCloudFullRes(dense_map_en ? feats_undistort : feats_down_body);
@@ -735,7 +752,7 @@ void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes, lidar_
             pointRGB.z =  pcl_wait_pub->points[i].z;
             V3D p_w(pcl_wait_pub->points[i].x, pcl_wait_pub->points[i].y, pcl_wait_pub->points[i].z);
             V2D pc(lidar_selector->new_frame_->w2c(p_w));
-            if (lidar_selector->new_frame_->cam_->isInFrame(pc.cast<int>(),0))
+            if (lidar_selector->new_frame_->cam_->isInFrame(pc.cast<int>(),0))//把上一帧的LIDAR点云投影到当前帧的相机坐标系下，找对应的颜色给点云赋值
             {
                 // cv::Mat img_cur = lidar_selector->new_frame_->img();
                 cv::Mat img_rgb = lidar_selector->img_rgb;
@@ -743,7 +760,7 @@ void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes, lidar_
                 pointRGB.r = pixel[2];
                 pointRGB.g = pixel[1];
                 pointRGB.b = pixel[0];
-                laserCloudWorldRGB->push_back(pointRGB);
+                laserCloudWorldRGB->push_back(pointRGB);// publish_count以imu的发布为准 PUBFRAME_PERIOD：20
             }
 
         }
@@ -844,7 +861,7 @@ void publish_visual_world_map(const ros::Publisher & pubVisualCloud)
 
 void publish_visual_world_sub_map(const ros::Publisher & pubSubVisualCloud)
 {
-    PointCloudXYZI::Ptr laserCloudFullRes(sub_map_cur_frame_point);
+    PointCloudXYZI::Ptr laserCloudFullRes(sub_map_cur_frame_point);//当前帧图像用的很稀疏的视觉地图点云
     int size = laserCloudFullRes->points.size();
     if (size==0) return;
     // PointCloudXYZI::Ptr laserCloudWorld( new PointCloudXYZI(size, 1));
@@ -1104,7 +1121,7 @@ void readParameters(ros::NodeHandle &nh)
     nh.param<int>("max_iteration",NUM_MAX_ITERATIONS,4);
     nh.param<bool>("ncc_en",ncc_en,false);
     nh.param<int>("min_img_count",MIN_IMG_COUNT,1000);    
-    nh.param<double>("cam_fx",cam_fx,453.483063);
+    nh.param<double>("cam_fx",cam_fx,453.483063);// 相机内参
     nh.param<double>("cam_fy",cam_fy,453.254913);
     nh.param<double>("cam_cx",cam_cx,318.908851);
     nh.param<double>("cam_cy",cam_cy,234.238189);
@@ -1118,7 +1135,7 @@ void readParameters(ros::NodeHandle &nh)
     nh.param<double>("filter_size_surf",filter_size_surf_min,0.5);
     nh.param<double>("filter_size_map",filter_size_map_min,0.5);
     nh.param<double>("cube_side_length",cube_len,200);
-    nh.param<double>("mapping/fov_degree",fov_deg,180);
+    nh.param<double>("mapping/fov_degree",fov_deg,180);// FOV
     nh.param<double>("mapping/gyr_cov_scale",gyr_cov_scale,1.0);
     nh.param<double>("mapping/acc_cov_scale",acc_cov_scale,1.0);
     nh.param<double>("preprocess/blind", p_pre->blind, 0.01);
@@ -1126,12 +1143,12 @@ void readParameters(ros::NodeHandle &nh)
     nh.param<int>("preprocess/scan_line", p_pre->N_SCANS, 16);
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, 0);
-    nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
+    nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>()); // 雷达imu外参
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
-    nh.param<vector<double>>("camera/Pcl", cameraextrinT, vector<double>());
+    nh.param<vector<double>>("camera/Pcl", cameraextrinT, vector<double>()); // 相机雷达外参
     nh.param<vector<double>>("camera/Rcl", cameraextrinR, vector<double>());
-    nh.param<int>("grid_size", grid_size, 40);
-    nh.param<int>("patch_size", patch_size, 4);
+    nh.param<int>("grid_size", grid_size, 40);    // 每个网格的像素宽高，配置为 40
+    nh.param<int>("patch_size", patch_size, 4);   // 选择的 patch 的宽高，配置为 8
     nh.param<double>("outlier_threshold",outlier_threshold,100);
     nh.param<double>("ncc_thre", ncc_thre, 100);
 
@@ -1146,8 +1163,8 @@ int main(int argc, char** argv)
     image_transport::ImageTransport it(nh);
     readParameters(nh);
     cout<<"debug:"<<debug<<" MIN_IMG_COUNT: "<<MIN_IMG_COUNT<<endl;
-    pcl_wait_pub->clear();
-    // pcl_visual_wait_pub->clear();
+    pcl_wait_pub->clear();//等待发布的点云
+    // 订阅LiDAR、IMU、img消息
     ros::Subscriber sub_pcl = p_pre->lidar_type == AVIA ? \
         nh.subscribe(lid_topic, 200000, livox_pcl_cbk) : \
         nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
@@ -1178,8 +1195,8 @@ int main(int argc, char** argv)
 
     /*** variables definition ***/
     #ifndef USE_IKFOM
-    VD(DIM_STATE) solution;
-    MD(DIM_STATE, DIM_STATE) G, H_T_H, I_STATE;
+    VD(DIM_STATE) solution;// 18*1
+    MD(DIM_STATE, DIM_STATE) G, H_T_H, I_STATE;// 18*18
     V3D rot_add, t_add;
     StatesGroup state_propagat;
     PointType pointOri, pointSel, coeff;
@@ -1191,6 +1208,7 @@ int main(int argc, char** argv)
     FOV_DEG = (fov_deg + 10.0) > 179.9 ? 179.9 : (fov_deg + 10.0);
     HALF_FOV_COS = cos((FOV_DEG) * 0.5 * PI_M / 180.0);
 
+    // 降采样系数
     downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
     downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min, filter_size_map_min);
     #ifdef USE_ikdforest
@@ -1199,45 +1217,61 @@ int main(int argc, char** argv)
         ikdforest.Set_environment(laserCloudDepth,laserCloudWidth,laserCloudHeight,cube_len);
         ikdforest.Set_downsample_param(filter_size_map_min);    
     #endif
-
+    // IMU处理的函数
     shared_ptr<ImuProcess> p_imu(new ImuProcess());
     // p_imu->set_extrinsic(V3D(0.04165, 0.02326, -0.0284));   //avia
     // p_imu->set_extrinsic(V3D(0.05512, 0.02226, -0.0297));   //horizon
-    V3D extT;
-    M3D extR;
+    V3D extT;//Lidar to IMU 外参
+    M3D extR;//Lidar to IMU 外参
     extT<<VEC_FROM_ARRAY(extrinT);
     extR<<MAT_FROM_ARRAY(extrinR);
-    Lidar_offset_to_IMU = extT;
-    lidar_selection::LidarSelectorPtr lidar_selector(new lidar_selection::LidarSelector(grid_size, new SparseMap));
-    if(!vk::camera_loader::loadFromRosNs("laserMapping", lidar_selector->cam))
+
+    //! 重要：处理VIO部分的类
+    lidar_selection::LidarSelectorPtr lidar_selector(
+        new lidar_selection::LidarSelector(grid_size, new SparseMap));
+    //; 从命名空间中读取参数，生成一个虚拟的相机类
+    if (!vk::camera_loader::loadFromRosNs("laserMapping", lidar_selector->cam))
         throw std::runtime_error("Camera model not correctly specified.");
-    lidar_selector->MIN_IMG_COUNT = MIN_IMG_COUNT;
-    lidar_selector->debug = debug;
-    lidar_selector->patch_size = patch_size;
-    lidar_selector->outlier_threshold = outlier_threshold;
-    lidar_selector->ncc_thre = ncc_thre;
-    lidar_selector->sparse_map->set_camera2lidar(cameraextrinR, cameraextrinT);
-    lidar_selector->set_extrinsic(extT, extR);
-    lidar_selector->state = &state;
-    lidar_selector->state_propagat = &state_propagat;
-    lidar_selector->NUM_MAX_ITERATIONS = NUM_MAX_ITERATIONS;
-    lidar_selector->MIN_IMG_COUNT = MIN_IMG_COUNT;
-    lidar_selector->img_point_cov = IMG_POINT_COV;
+
+    // TODO：初始化lidar_selection的一些参数
+    //; 这个没用到
+    lidar_selector->MIN_IMG_COUNT = MIN_IMG_COUNT;   // 1000
+    lidar_selector->debug = debug;  // 0 是否显示debug信息
+    lidar_selector->patch_size = patch_size;   // 8
+    lidar_selector->outlier_threshold = outlier_threshold;  // 300
+    lidar_selector->ncc_thre = ncc_thre;   // 0 ncc 的阈值
+    //; 进去内部看，应该是 T_camera_lidar?
+    lidar_selector->sparse_map->set_camera2lidar(cameraextrinR, cameraextrinT); // hr: from camera to lidar
+    //; 传入的是 T_imu_lidar，内部赋值做了转换，变成 T_lidar_imu
+    lidar_selector->set_extrinsic(extT, extR);  // hr: TODO:return T from imu to lidar
+    //; 绑定状态变量，这样会在VIO里面直接更改LIO的结果
+    lidar_selector->state = &state;  
+    //; IMU预测的状态，这和IEKF有关，因为IEKF会一直计算当前状态和预测状态之间的差值
+    lidar_selector->state_propagat = &state_propagat;  
+    lidar_selector->NUM_MAX_ITERATIONS = NUM_MAX_ITERATIONS; // 4，IEKF迭代的最大阈值
+    //; 和优化有关，视觉点的协方差
+    lidar_selector->img_point_cov = IMG_POINT_COV; // 100
+    //; 给成员变量中的相机内参赋值
     lidar_selector->fx = cam_fx;
     lidar_selector->fy = cam_fy;
     lidar_selector->cx = cam_cx;
     lidar_selector->cy = cam_cy;
-    lidar_selector->ncc_en = ncc_en;
+    //; NCC是归一化相关性，是相比使用patch对齐的更复杂的差异度量方式，见十四讲P230
+    lidar_selector->ncc_en = ncc_en; // 0
     lidar_selector->init();
+    //------------------------------- vio 部分变量初始化完毕 --------------------------
     
-    p_imu->set_extrinsic(extT, extR);
+   //; 对IMU类设置噪声等消息
+    p_imu->set_extrinsic(extT, extR); // TODO:lidar to imu??
     p_imu->set_gyr_cov_scale(V3D(gyr_cov_scale, gyr_cov_scale, gyr_cov_scale));
     p_imu->set_acc_cov_scale(V3D(acc_cov_scale, acc_cov_scale, acc_cov_scale));
-    p_imu->set_gyr_bias_cov(V3D(0.00001, 0.00001, 0.00001));
-    p_imu->set_acc_bias_cov(V3D(0.00001, 0.00001, 0.00001));
+    //    p_imu->set_gyr_bias_cov(V3D(0.00001, 0.00001, 0.00001));
+    //    p_imu->set_acc_bias_cov(V3D(0.00001, 0.00001, 0.00001));
+    p_imu->set_gyr_bias_cov(V3D(0.00003, 0.00003, 0.00003));
+    p_imu->set_acc_bias_cov(V3D(0.01, 0.01, 0.01));
 
     #ifndef USE_IKFOM
-    G.setZero();
+    G.setZero();// 18 * 18 的矩阵，三个都是
     H_T_H.setZero();
     I_STATE.setIdentity();
     #endif
@@ -1273,7 +1307,7 @@ int main(int argc, char** argv)
     {
         if (flg_exit) break;
         ros::spinOnce();
-        if(!sync_packages(LidarMeasures))
+        if(!sync_packages(LidarMeasures))// Step 1: 同步LiDAR、IMU、Image信息，如果没有同步成功，则一直在这里等待
         {
             status = ros::ok();
             cv::waitKey(1);
@@ -1300,8 +1334,12 @@ int main(int argc, char** argv)
         state_point = kf.get_x();
         pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
         #else
-        p_imu->Process2(LidarMeasures, state, feats_undistort); 
+        // Step 2: 利用IMU数据对状态变量进行积分递推，同时得到去畸变之后的LIDAR点云
+        //! 疑问：里面的代码太乱，没有看懂如果当前帧是图像，到底有没有对点云进行去畸变
+        //! 暂时解答：感觉应该是没有去畸变处理的，以为里面的操作如果是图像则点的时间都不满足要求，都不会去畸变
+        p_imu->Process2(LidarMeasures, state, feats_undistort);
         state_propagat = state;
+
         #endif
 
         if (lidar_selector->debug)
@@ -1327,48 +1365,37 @@ int main(int argc, char** argv)
         }
         fast_lio_is_ready = true;
         flg_EKF_inited = (LidarMeasures.lidar_beg_time - first_lidar_time) < INIT_TIME ? \
-                        false : true;
+                        false : true;//是否完成初始化
 
-        if (! LidarMeasures.is_lidar_end) 
+        // Step 3: 当前是图像帧，则进行视觉VIO处理
+        if (! LidarMeasures.is_lidar_end) //相机与IMU数据
         {
-            cout<<"[ VIO ]: Raw feature num: "<<pcl_wait_pub->points.size() << "." << endl;
+            cout<<"[ VIO ]: Raw feature num: "<<pcl_wait_pub->points.size() << "." << endl;//; 打印本次VIO之前，上一次LIO的LiDAR点云(转到world系下)
             if (first_lidar_time<10)
             {
                 continue;
             }
-            // cout<<"cur state:"<<state.rot_end<<endl;
+            //如果开启VIO模块，则才往下处理
             if (img_en) {
                 euler_cur = RotMtoEuler(state.rot_end);
                 fout_pre << setw(20) << LidarMeasures.last_update_time - first_lidar_time << " " << euler_cur.transpose()*57.3 << " " << state.pos_end.transpose() << " " << state.vel_end.transpose() \
                                 <<" "<<state.bias_g.transpose()<<" "<<state.bias_a.transpose()<<" "<<state.gravity.transpose()<< endl;
                 
-                // lidar_selector->detect(LidarMeasures.measures.back().img, feats_undistort);
-                // mtx_buffer_pointcloud.lock();
-                
-                // int size = feats_undistort->points.size();
-                // cout<<"size1111111111111111: "<<size<<endl;
-                // PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
-                // for (int i = 0; i < size; i++)
-                // {
-                //     pointBodyToWorld(&feats_undistort->points[i], \
-                //                         &laserCloudWorld->points[i]);
-                // }
-
-                lidar_selector->detect(LidarMeasures.measures.back().img, pcl_wait_pub);
+                /* visual main */
+                //! 重要：视觉VIO的主函数！
+                //; 传入: 当前帧的图像 和 上一帧的LiDAR在世界坐标系下的点云
+                //先用IMU预积分更新一下状态，pcl_wait_pub是点云数据，
+                //视觉是从地图点里抽FOV里面的点，当然会作检查，取出遮挡点、深度不连续点，然后在于当前img作光度误差
+                //1 先是addFromSparseMap choose %d points from sub_sparse_map，在sub_sparse_map中，利用最近雷达扫描从地图中选取子图。
+                //2 是addSparseMap，Add %d 3D points 这里不是很懂
+                //3 ComputeJ里面：UpdateState迭代更新，最后一次更新updateFrameState
+                //4 addObservation
+                lidar_selector->detect(LidarMeasures.measures.back().img, pcl_wait_pub);//这里取最后一个
                 // int size = lidar_selector->map_cur_frame_.size();
                 int size_sub = lidar_selector->sub_map_cur_frame_.size();
                 
                 // map_cur_frame_point->clear();
                 sub_map_cur_frame_point->clear();
-                // for(int i=0; i<size; i++)
-                // {
-                //     PointType temp_map;
-                //     temp_map.x = lidar_selector->map_cur_frame_[i]->pos_[0];
-                //     temp_map.y = lidar_selector->map_cur_frame_[i]->pos_[1];
-                //     temp_map.z = lidar_selector->map_cur_frame_[i]->pos_[2];
-                //     temp_map.intensity = 0.;
-                //     map_cur_frame_point->push_back(temp_map);
-                // }
                 for(int i=0; i<size_sub; i++)
                 {
                     PointType temp_map;
@@ -1386,22 +1413,19 @@ int main(int argc, char** argv)
                 out_msg.image = img_rgb;
                 img_pub.publish(out_msg.toImageMsg());
 
-                if(img_en) publish_frame_world_rgb(pubLaserCloudFullRes, lidar_selector);
+                if(img_en) publish_frame_world_rgb(pubLaserCloudFullRes, lidar_selector);// 发布带有rgb信息的点云信息
                 publish_visual_world_sub_map(pubSubVisualCloud);
                 
-                // *map_cur_frame_point = *pcl_wait_pub;
-                // mtx_buffer_pointcloud.unlock();
-                // lidar_selector->detect(LidarMeasures.measures.back().img, feats_down_world);
-                // p_imu->push_update_state(LidarMeasures.measures.back().img_offset_time, state);
                 geoQuat = tf::createQuaternionMsgFromRollPitchYaw(euler_cur(0), euler_cur(1), euler_cur(2));
                 publish_odometry(pubOdomAftMapped);
                 euler_cur = RotMtoEuler(state.rot_end);
                 fout_out << setw(20) << LidarMeasures.last_update_time - first_lidar_time << " " << euler_cur.transpose()*57.3 << " " << state.pos_end.transpose() << " " << state.vel_end.transpose() \
                 <<" "<<state.bias_g.transpose()<<" "<<state.bias_a.transpose()<<" "<<state.gravity.transpose()<<" "<<feats_undistort->points.size()<<endl;
             }
-            continue;
+            continue;//相机处理好了，下一轮。不用继续往下处理了，因为当前只是处理视觉的部分，而不包括激光的信息
         }
 
+        // Step 4: 运行到这里，说明当前是LiDAR帧，则运行LIO
         /*** Segment the map in lidar FOV ***/
         #ifndef USE_ikdforest            
             lasermap_fov_segment();
@@ -1453,9 +1477,9 @@ int main(int argc, char** argv)
         res_last.resize(feats_down_size, 1000.0);
         
         t1 = omp_get_wtime();
-        if (lidar_en)
+        if (lidar_en)//要用雷达数据
         {
-            euler_cur = RotMtoEuler(state.rot_end);
+            euler_cur = RotMtoEuler(state.rot_end);//欧拉角
             #ifdef USE_IKFOM
             //state_ikfom fout_state = kf.get_x();
             fout_pre << setw(20) << LidarMeasures.last_update_time - first_lidar_time << " " << euler_cur.transpose()*57.3 << " " << state_point.pos.transpose() << " " << state_point.vel.transpose() \
@@ -1508,12 +1532,12 @@ int main(int argc, char** argv)
 
         if(img_en)
         {
-            omp_set_num_threads(MP_PROC_NUM);
-            #pragma omp parallel for
+            omp_set_num_threads(MP_PROC_NUM);// 设置线程的默认周期数为MP_PROC_NUM 4
+            #pragma omp parallel for// 并行计算
             for(int i=0;i<1;i++) {}
         }
 
-        if(lidar_en)
+        if(lidar_en)//用雷达点云做状态更新
         {
             for (iterCount = -1; iterCount < NUM_MAX_ITERATIONS && flg_EKF_inited; iterCount++) 
             {
@@ -1583,9 +1607,9 @@ int main(int argc, char** argv)
                     if (esti_plane(pabcd, points_near, 0.1f)) //(planeValid)
                     {
                         float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
-                        float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
+                        float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());//点到平面距离公式
 
-                        if (s > 0.9)
+                        if (s > 0.9)//threshold 点到平面距离 < 1/9
                         {
                             point_selected_surf[i] = true;
                             normvec->points[i].x = pabcd(0);
@@ -1613,8 +1637,8 @@ int main(int argc, char** argv)
 
                 res_mean_last = total_residual / effct_feat_num;
                 // cout << "[ mapping ]: Effective feature num: "<<effct_feat_num<<" res_mean_last "<<res_mean_last<<endl;
-                match_time  += omp_get_wtime() - match_start;
-                solve_start  = omp_get_wtime();
+                match_time  += omp_get_wtime() - match_start;// 匹配结束
+                solve_start  = omp_get_wtime(); // 迭代求解开始
                 
                 /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
                 MatrixXd Hsub(effct_feat_num, 6);
@@ -1626,7 +1650,7 @@ int main(int argc, char** argv)
                     V3D point_this(laser_p.x, laser_p.y, laser_p.z);
                     point_this += Lidar_offset_to_IMU;
                     M3D point_crossmat;
-                    point_crossmat<<SKEW_SYM_MATRX(point_this);
+                    point_crossmat<<SKEW_SYM_MATRX(point_this);// 斜对称矩阵
 
                     /*** get the normal vector of closest surface/corner ***/
                     const PointType &norm_p = corr_normvect->points[i];
@@ -1668,7 +1692,7 @@ int main(int argc, char** argv)
                     // state += solution;
                     // state.cov = (MatrixXd::Identity(DIM_STATE, DIM_STATE) - K_init * H_init) * state.cov;
 
-                    state.resetpose();
+                    state.resetpose();// R：单位阵；p,v:Zero3d
                     EKF_stop_flg = true;
                 }
                 else
@@ -1678,7 +1702,7 @@ int main(int argc, char** argv)
                     H_T_H.block<6,6>(0,0) = Hsub_T * Hsub;
                     // EigenSolver<Matrix<double, 6, 6>> es(H_T_H.block<6,6>(0,0));
                     MD(DIM_STATE, DIM_STATE) &&K_1 = \
-                            (H_T_H + (state.cov / LASER_POINT_COV).inverse()).inverse();
+                            (H_T_H + (state.cov / LASER_POINT_COV).inverse()).inverse();//雷达协方差
                     G.block<DIM_STATE,6>(0,0) = K_1.block<DIM_STATE,6>(0,0) * H_T_H.block<6,6>(0,0);
                     auto vec = state_propagat - state;
                     solution = K_1.block<DIM_STATE,6>(0,0) * HTz + vec - G.block<DIM_STATE,6>(0,0) * vec.block<6,1>(0,0);
@@ -1697,13 +1721,13 @@ int main(int argc, char** argv)
                     rot_add = solution.block<3,1>(0,0);
                     t_add   = solution.block<3,1>(3,0);
 
-                    if ((rot_add.norm() * 57.3 < 0.01) && (t_add.norm() * 100 < 0.015))
+                    if ((rot_add.norm() * 57.3 < 0.01) && (t_add.norm() * 100 < 0.015))// threshold EKF收敛
                     {
                         flg_EKF_converged = true;
                     }
 
-                    deltaR = rot_add.norm() * 57.3;
-                    deltaT = t_add.norm() * 100;
+                    deltaR = rot_add.norm() * 57.3;// 弧度 to 角度
+                    deltaT = t_add.norm() * 100; // m to cm
                 }
                 euler_cur = RotMtoEuler(state.rot_end);
                 

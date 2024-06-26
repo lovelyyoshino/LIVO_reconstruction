@@ -33,15 +33,15 @@ struct Feature
     EDGELET
   };
   int id_;
-  FeatureType type;     //!< Type can be corner or edgelet.
-  Frame* frame;         //!< Pointer to frame in which the feature was detected.
+  FeatureType type; //!< Type can be corner or edgelet. 特征类型，分为角点和边缘集
+  Frame *frame;     //!< Pointer to frame in which the feature was detected. 特征类型，分为角点和边缘集
   cv::Mat img;
   vector<cv::Mat> ImgPyr;
-  Vector2d px;          //!< Coordinates in pixels on pyramid level 0.
-  Vector3d f;           //!< Unit-bearing vector of the feature.
-  int level;            //!< Image pyramid level where feature was extracted.
-  PointPtr point;         //!< Pointer to 3D point which corresponds to the feature.
-  Vector2d grad;        //!< Dominant gradient direction for edglets, normalized.
+  Vector2d px;    //!< Coordinates in pixels on pyramid level 0. 第0层图像的特征点位置
+  Vector3d f;     //!< Unit-bearing vector of the feature. 归一化平面坐标
+  int level;      //!< Image pyramid level where feature was extracted. 特征点所在金字塔的层数
+  PointPtr point; //!< Pointer to 3D point which corresponds to the feature. 该特征点所关联的3D地图点
+  Vector2d grad;  //!< Dominant gradient direction for edglets, normalized. 边缘集的梯度方向，模为1
   float score;
   float error;
   // Vector2d grad_cur_;   //!< edgelete grad direction in cur frame 

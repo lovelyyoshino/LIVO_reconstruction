@@ -28,6 +28,9 @@ namespace lidar_selection {
 
 int Frame::frame_counter_ = 0; 
 
+/// @brief 初始化Frame,构造函数，传入id，相机模型，5个关键点，是否为关键帧，然后进行初始化
+/// @param cam 对应的相机模型
+/// @param img 对应的图像
 Frame::Frame(vk::AbstractCamera* cam, const cv::Mat& img) :
     id_(frame_counter_++), 
     cam_(cam), 
@@ -51,8 +54,8 @@ void Frame::initFrame(const cv::Mat& img)
   // Set keypoints to nullptr
   std::for_each(key_pts_.begin(), key_pts_.end(), [&](FeaturePtr ftr){ ftr=nullptr; });
   
-  ImgPyr ().swap(img_pyr_);
-  img_pyr_.push_back(img);
+  ImgPyr ().swap(img_pyr_);//ImgPyr: vector<cv::Mat> 用swap交换到一个新的类型的vector,将原来的a拷贝出去，然后自然销毁，而新的到的a是全新的没有存任何数据的。
+  img_pyr_.push_back(img);// 然后把当前帧的图像加到图像金字塔中，也就是图像金字塔的第0层
   // Build Image Pyramid
   // frame_utils::createImgPyramid(img, max(Config::nPyrLevels(), Config::kltMaxLevel()+1), img_pyr_);
   // frame_utils::createImgPyramid(img, 5, img_pyr_); 
@@ -78,6 +81,19 @@ void Frame::setKeyPoints()
   std::for_each(fts_.begin(), fts_.end(), [&](FeaturePtr ftr){ if(ftr->point != nullptr) checkKeyPoints(ftr); });
 }
 
+/// @brief 找到五点法中需要的5个点
+        /* 举例：选取的是这5个点
+         * 以key_pts_[2]为例：
+         *
+         * 		|-----------------------|
+         * 		|*		      		   *|
+         * 		|			   			|
+         * 		|	  	    *		    |
+         * 		|		            ？	|
+         * 		|*		               *| <-key_pts_[2],要求这里的点在减去cu,cv之后面积仍然是最大的，
+         * 		|-----------------------|               因此可以判定为在最右下角的点满足条件
+         */
+/// @param ftr 一个特征点
 void Frame::checkKeyPoints(FeaturePtr ftr)
 {
   const int cu = cam_->width()/2;
@@ -85,33 +101,31 @@ void Frame::checkKeyPoints(FeaturePtr ftr)
 
   // center pixel
   if(key_pts_[0] == nullptr)
-    key_pts_[0] = ftr;
+    key_pts_[0] = ftr;// 不断更新，选择最靠近图像中心的点
 
   else if(std::max(std::fabs(ftr->px[0]-cu), std::fabs(ftr->px[1]-cv))
         < std::max(std::fabs(key_pts_[0]->px[0]-cu), std::fabs(key_pts_[0]->px[1]-cv)))
     key_pts_[0] = ftr;
 
-  if(ftr->px[0] >= cu && ftr->px[1] >= cv)
+  if(ftr->px[0] >= cu && ftr->px[1] >= cv)// 右上角
   {
     if(key_pts_[1] == nullptr)
       key_pts_[1] = ftr;
     else if((ftr->px[0]-cu) * (ftr->px[1]-cv)
           > (key_pts_[1]->px[0]-cu) * (key_pts_[1]->px[1]-cv))
-      key_pts_[1] = ftr;
+      key_pts_[1] = ftr;// 相乘面积最大：说明点越靠近边界，满足条件
   }
 
-  if(ftr->px[0] >= cu && ftr->px[1] < cv)
+  if(ftr->px[0] >= cu && ftr->px[1] < cv) // 右下角
   {
     if(key_pts_[2] == nullptr)
       key_pts_[2] = ftr;
-    // else if((ftr->px[0]-cu) * (ftr->px[1]-cv)
     else if((ftr->px[0]-cu) * (cv-ftr->px[1])
-          // > (key_pts_[2]->px[0]-cu) * (key_pts_[2]->px[1]-cv))
           > (key_pts_[2]->px[0]-cu) * (cv-key_pts_[2]->px[1]))
       key_pts_[2] = ftr;
   }
 
-  if(ftr->px[0] < cu && ftr->px[1] < cv)
+  if(ftr->px[0] < cu && ftr->px[1] < cv)// 左下角
   {
     if(key_pts_[3] == nullptr)
       key_pts_[3] = ftr;
@@ -120,7 +134,7 @@ void Frame::checkKeyPoints(FeaturePtr ftr)
       key_pts_[3] = ftr;
   }
 
-  if(ftr->px[0] < cu && ftr->px[1] >= cv)  
+  if(ftr->px[0] < cu && ftr->px[1] >= cv)// 左上角
   // if(ftr->px[0] < cv && ftr->px[1] >= cv)
   {
     if(key_pts_[4] == nullptr)
@@ -151,7 +165,7 @@ bool Frame::isVisible(const Vector3d& xyz_w) const
 
   if(xyz_f.z() < 0.0)
     return false; // point is behind the camera
-  Vector2d px = f2c(xyz_f);
+  Vector2d px = f2c(xyz_f);// 转换到像素
 
   if(px[0] >= 0.0 && px[1] >= 0.0 && px[0] < cam_->width() && px[1] < cam_->height())
     return true;
@@ -160,20 +174,27 @@ bool Frame::isVisible(const Vector3d& xyz_w) const
 
 /// Utility functions for the Frame class
 namespace frame_utils {
-
+/// @brief 创建图像金字塔，传入的参数是第一层的图像（底层），层数，金字塔
+/// @param img_level_0 图像的第一层原图
+/// @param n_levels 层数
+/// @param pyr 金字塔
 void createImgPyramid(const cv::Mat& img_level_0, int n_levels, ImgPyr& pyr)
 {
   pyr.resize(n_levels);
-  pyr[0] = img_level_0;
+  pyr[0] = img_level_0; // 原图
 
-  for(int i=1; i<n_levels; ++i)
+  for(int i=1; i<n_levels; ++i)// 遍历层数，下采样1/4
   {
     pyr[i] = cv::Mat(pyr[i-1].rows/2, pyr[i-1].cols/2, CV_8U);
     vk::halfSample(pyr[i-1], pyr[i]);
   }
 }
 
-
+/// @brief 获得场景深度，传入，帧，深度均值，深度最小值
+/// @param frame 图像帧
+/// @param depth_mean 深度均值
+/// @param depth_min 深度最小值
+/// @return 
 bool getSceneDepth(const Frame& frame, double& depth_mean, double& depth_min)
 {
   vector<double> depth_vec;
@@ -185,7 +206,7 @@ bool getSceneDepth(const Frame& frame, double& depth_mean, double& depth_min)
     {
       const double z = frame.w2f((*it)->point->pos_).z();
       depth_vec.push_back(z);
-      depth_min = fmin(z, depth_min);
+      depth_min = fmin(z, depth_min);//受两个参数并返回其中最小的一个。如果其中一个参数是 NaN，则返回另一个参数
     }
   }
   if(depth_vec.empty())
@@ -193,7 +214,7 @@ bool getSceneDepth(const Frame& frame, double& depth_mean, double& depth_min)
     cout<<"Cannot set scene depth. Frame has no point-observations!"<<endl;
     return false;
   }
-  depth_mean = vk::getMedian(depth_vec);
+  depth_mean = vk::getMedian(depth_vec);// 获得深度均值
   return true;
 }
 
