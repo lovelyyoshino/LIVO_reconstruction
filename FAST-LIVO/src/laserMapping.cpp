@@ -132,9 +132,18 @@ int dense_map_en = 1;
 int img_en = 1;
 int lidar_en = 1;
 int debug = 0;
+int frame_num = 0;
 bool fast_lio_is_ready = false;
 int grid_size, patch_size;
 double outlier_threshold, ncc_thre;
+/**
+ * @brief add by crz
+ *
+ */
+bool onlyUpdateBias, useVio, onlyUpdateBg, useKalmanSmooth, zero_point_one;
+int eigenValueThreshold;
+double img_time_offset;
+PointCloudXYZI::Ptr pcl_wait_test(new PointCloudXYZI());
 
 vector<BoxPointType> cub_needrm;
 vector<BoxPointType> cub_needad;
@@ -155,6 +164,7 @@ vector<double> cameraextrinR(9, 0.0);
 double total_residual;
 double LASER_POINT_COV, IMG_POINT_COV, cam_fx, cam_fy, cam_cx, cam_cy; 
 bool flg_EKF_inited, flg_EKF_converged, EKF_stop_flg = 0;
+bool lio_first = false;
 //surf feature in map
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr cube_points_add(new PointCloudXYZI());
@@ -426,22 +436,26 @@ void lasermap_fov_segment()
 void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg) 
 {
     mtx_buffer.lock();
+    sensor_msgs::PointCloud2::Ptr msg_in(new sensor_msgs::PointCloud2(*msg));
+    if (zero_point_one) {
+        msg_in->header.stamp = ros::Time().fromSec(msg->header.stamp.toSec() - 0.1);
+    }
     // cout<<"got feature"<<endl;
-    if (msg->header.stamp.toSec() < last_timestamp_lidar)
+    if (msg_in->header.stamp.toSec() < last_timestamp_lidar)
     {
         ROS_ERROR("lidar loop back, clear buffer");
         lidar_buffer.clear();
     }
     
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
-    p_pre->process(msg, ptr);
-    // ROS_INFO("get point cloud at time: %.6f and size: %d", msg->header.stamp.toSec() - 0.1, ptr->points.size());
-    printf("[ INFO ]: get point cloud at time: %.6f and size: %d.\n", msg->header.stamp.toSec(), int(ptr->points.size()));
+    p_pre->process(msg_in, ptr);
+    // ROS_INFO("get point cloud at time: %.6f and size: %d", msg_in->header.stamp.toSec() - 0.1, ptr->points.size());
+    printf("[ INFO ]: get point cloud at time: %.6f and size: %d.\n", msg_in->header.stamp.toSec(), int(ptr->points.size()));
     lidar_buffer.push_back(ptr);
-    // time_buffer.push_back(msg->header.stamp.toSec() - 0.1);
-    // last_timestamp_lidar = msg->header.stamp.toSec() - 0.1;
-    time_buffer.push_back(msg->header.stamp.toSec());
-    last_timestamp_lidar = msg->header.stamp.toSec();
+    // time_buffer.push_back(msg_in->header.stamp.toSec() - 0.1);
+    // last_timestamp_lidar = msg_in->header.stamp.toSec() - 0.1;
+    time_buffer.push_back(msg_in->header.stamp.toSec());
+    last_timestamp_lidar = msg_in->header.stamp.toSec();
     mtx_buffer.unlock();
     sig_buffer.notify_all();
 }
@@ -524,7 +538,7 @@ void img_cbk(const sensor_msgs::ImageConstPtr& msg)
         return;
     }
     printf("[ INFO ]: get img at time: %.6f.\n", msg->header.stamp.toSec());
-    if (msg->header.stamp.toSec() < last_timestamp_img)
+    if (msg->header.stamp.toSec() - img_time_offset < last_timestamp_img)
     {
         ROS_ERROR("img loop back, clear buffer");
         img_buffer.clear();
@@ -534,8 +548,8 @@ void img_cbk(const sensor_msgs::ImageConstPtr& msg)
     // cout<<"Lidar_buff.size()"<<lidar_buffer.size()<<endl;
     // cout<<"Imu_buffer.size()"<<imu_buffer.size()<<endl;
     img_buffer.push_back(getImageFromMsg(msg));//转换为mat格式
-    img_time_buffer.push_back(msg->header.stamp.toSec());
-    last_timestamp_img = msg->header.stamp.toSec();
+    img_time_buffer.push_back(msg->header.stamp.toSec() - img_time_offset);
+    last_timestamp_img = msg->header.stamp.toSec() - img_time_offset;
     // cv::imshow("img", img);
     // cv::waitKey(1);
     // cout<<"last_timestamp_img:::"<<last_timestamp_img<<endl;
@@ -727,51 +741,35 @@ void map_incremental()
 
 // PointCloudXYZRGB::Ptr pcl_wait_pub_RGB(new PointCloudXYZRGB(500000, 1));
 PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI());//在一次LIO优化后，当前LiDAR帧的点云转到世界坐标系下的点云
-void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes, lidar_selection::LidarSelectorPtr lidar_selector)
+void publish_frame_world_rgb(const ros::Publisher &pubLaserCloudFullRes, lidar_selection::LidarSelectorPtr lidar_selector)
 {
-    // PointCloudXYZI::Ptr laserCloudFullRes(dense_map_en ? feats_undistort : feats_down_body);
-    // int size = laserCloudFullRes->points.size();
-    // if(size==0) return;
-    // PointCloudXYZI::Ptr laserCloudWorld( new PointCloudXYZI(size, 1));
-
-    // for (int i = 0; i < size; i++)
-    // {
-    //     RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
-    //                         &laserCloudWorld->points[i]);
-    // }
     uint size = pcl_wait_pub->points.size();
     PointCloudXYZRGB::Ptr laserCloudWorldRGB(new PointCloudXYZRGB(size, 1));
-    if(img_en)
+    if (img_en)
     {
         laserCloudWorldRGB->clear();
-        for (int i=0; i<size; i++)
+        for (int i = 0; i < size; i++)
         {
             PointTypeRGB pointRGB;
-            pointRGB.x =  pcl_wait_pub->points[i].x;
-            pointRGB.y =  pcl_wait_pub->points[i].y;
-            pointRGB.z =  pcl_wait_pub->points[i].z;
+            pointRGB.x = pcl_wait_pub->points[i].x;
+            pointRGB.y = pcl_wait_pub->points[i].y;
+            pointRGB.z = pcl_wait_pub->points[i].z;
             V3D p_w(pcl_wait_pub->points[i].x, pcl_wait_pub->points[i].y, pcl_wait_pub->points[i].z);
+            V3D pf(lidar_selector->new_frame_->w2f(p_w));
+            if (pf[2] < 0)  continue;
             V2D pc(lidar_selector->new_frame_->w2c(p_w));
-            if (lidar_selector->new_frame_->cam_->isInFrame(pc.cast<int>(),0))//把上一帧的LIDAR点云投影到当前帧的相机坐标系下，找对应的颜色给点云赋值
+            if (lidar_selector->new_frame_->cam_->isInFrame(pc.cast<int>(), 0))
             {
-                // cv::Mat img_cur = lidar_selector->new_frame_->img();
                 cv::Mat img_rgb = lidar_selector->img_rgb;
                 V3F pixel = lidar_selector->getpixel(img_rgb, pc);
                 pointRGB.r = pixel[2];
                 pointRGB.g = pixel[1];
                 pointRGB.b = pixel[0];
-                laserCloudWorldRGB->push_back(pointRGB);// publish_count以imu的发布为准 PUBFRAME_PERIOD：20
+                laserCloudWorldRGB->push_back(pointRGB);
             }
-
         }
-
     }
-    // else
-    // {
-    //*pcl_wait_pub = *laserCloudWorld;
-    // }
-    // mtx_buffer_pointcloud.lock();
-    if (1)//if(publish_count >= PUBFRAME_PERIOD)
+    if (1) // if(publish_count >= PUBFRAME_PERIOD)
     {
         sensor_msgs::PointCloud2 laserCloudmsg;
         if (img_en)
@@ -783,18 +781,88 @@ void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes, lidar_
         {
             pcl::toROSMsg(*pcl_wait_pub, laserCloudmsg);
         }
-        laserCloudmsg.header.stamp = ros::Time::now();//.fromSec(last_timestamp_lidar);
+        laserCloudmsg.header.stamp = ros::Time::now(); //.fromSec(last_timestamp_lidar);
         laserCloudmsg.header.frame_id = "camera_init";
         pubLaserCloudFullRes.publish(laserCloudmsg);
         publish_count -= PUBFRAME_PERIOD;
-        // pcl_wait_pub->clear();
     }
-    // mtx_buffer_pointcloud.unlock();
+
     /**************** save map ****************/
     /* 1. make sure you have enough memories
     /* 2. noted that pcd save will influence the real-time performences **/
-    if (pcd_save_en) *pcl_wait_save += *laserCloudWorldRGB;          
+    if (1)
+    {
+        *pcl_wait_save += *laserCloudWorldRGB;
+    }
 }
+// void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes, lidar_selection::LidarSelectorPtr lidar_selector)
+// {
+//    // PointCloudXYZI::Ptr laserCloudFullRes(dense_map_en ? feats_undistort : feats_down_body);
+//    // int size = laserCloudFullRes->points.size();
+//    // if(size==0) return;
+//    // PointCloudXYZI::Ptr laserCloudWorld( new PointCloudXYZI(size, 1));
+
+//    // for (int i = 0; i < size; i++)
+//    // {
+//    //     RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
+//    //                         &laserCloudWorld->points[i]);
+//    // }
+//    uint size = pcl_wait_pub->points.size();
+//    PointCloudXYZRGB::Ptr laserCloudWorldRGB(new PointCloudXYZRGB(size, 1));
+//    if(img_en)
+//    {
+//        laserCloudWorldRGB->clear();
+//        for (int i=0; i<size; i++)
+//        {
+//            PointTypeRGB pointRGB;
+//            pointRGB.x =  pcl_wait_pub->points[i].x;
+//            pointRGB.y =  pcl_wait_pub->points[i].y;
+//            pointRGB.z =  pcl_wait_pub->points[i].z;
+//            V3D p_w(pcl_wait_pub->points[i].x, pcl_wait_pub->points[i].y, pcl_wait_pub->points[i].z);
+//            V2D pc(lidar_selector->new_frame_->w2c(p_w));
+//            if (lidar_selector->new_frame_->cam_->isInFrame(pc.cast<int>(),0))//把上一帧的LIDAR点云投影到当前帧的相机坐标系下，找对应的颜色给点云赋值
+//            {
+//                // cv::Mat img_cur = lidar_selector->new_frame_->img();
+//                cv::Mat img_rgb = lidar_selector->img_rgb;
+//                V3F pixel = lidar_selector->getpixel(img_rgb, pc);
+//                pointRGB.r = pixel[2];
+//                pointRGB.g = pixel[1];
+//                pointRGB.b = pixel[0];
+//                laserCloudWorldRGB->push_back(pointRGB);// publish_count以imu的发布为准 PUBFRAME_PERIOD：20
+//            }
+
+//        }
+
+//    }
+//    // else
+//    // {
+//    //*pcl_wait_pub = *laserCloudWorld;
+//    // }
+//    // mtx_buffer_pointcloud.lock();
+//    if (1)//if(publish_count >= PUBFRAME_PERIOD)
+//    {
+//        sensor_msgs::PointCloud2 laserCloudmsg;
+//        if (img_en)
+//        {
+//            // cout<<"RGB pointcloud size: "<<laserCloudWorldRGB->size()<<endl;
+//            pcl::toROSMsg(*laserCloudWorldRGB, laserCloudmsg);
+//        }
+//        else
+//        {
+//            pcl::toROSMsg(*pcl_wait_pub, laserCloudmsg);
+//        }
+//        laserCloudmsg.header.stamp = ros::Time::now();//.fromSec(last_timestamp_lidar);
+//        laserCloudmsg.header.frame_id = "camera_init";
+//        pubLaserCloudFullRes.publish(laserCloudmsg);
+//        publish_count -= PUBFRAME_PERIOD;
+//        // pcl_wait_pub->clear();
+//    }
+//    // mtx_buffer_pointcloud.unlock();
+//    /**************** save map ****************/
+//    /* 1. make sure you have enough memories
+//    /* 2. noted that pcd save will influence the real-time performences **/
+//    if (pcd_save_en) *pcl_wait_save += *laserCloudWorldRGB;
+// }
 
 void publish_frame_world(const ros::Publisher & pubLaserCloudFullRes)
 {
@@ -1152,6 +1220,18 @@ void readParameters(ros::NodeHandle &nh)
     nh.param<double>("outlier_threshold",outlier_threshold,100);
     nh.param<double>("ncc_thre", ncc_thre, 100);
 
+    /**
+    * @brief add by crz
+    *
+    */
+    nh.param<bool>("onlyUpdateBias", onlyUpdateBias, false);
+    nh.param<bool>("onlyUpdateBg", onlyUpdateBg, false);
+    nh.param<bool>("useKalmanSmooth", useKalmanSmooth, true);
+    nh.param<bool>("zero_point_one", zero_point_one, false);
+    nh.param<double>("img_time_offset", img_time_offset, 0.0);
+    nh.param<bool>("useVio", useVio, true);
+    nh.param<int>("eigenValueThreshold", eigenValueThreshold, 0);
+
     nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
 
 }
@@ -1185,6 +1265,10 @@ int main(int argc, char** argv)
             ("/aft_mapped_to_init", 10);
     ros::Publisher pubPath          = nh.advertise<nav_msgs::Path> 
             ("/path", 10);
+    /* add by crz*/
+    ros::Publisher pubLaserCloudFrame =
+      nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_body", 100);
+
 
 #ifdef DEPLOY
     ros::Publisher mavros_pose_publisher = nh.advertise<geometry_msgs::PoseStamped>("/mavros/vision_pose/pose", 10);
@@ -1196,9 +1280,10 @@ int main(int argc, char** argv)
     /*** variables definition ***/
     #ifndef USE_IKFOM
     VD(DIM_STATE) solution;// 18*1
-    MD(DIM_STATE, DIM_STATE) G, H_T_H, I_STATE;// 18*18
+    MD(DIM_STATE, DIM_STATE) G, H_T_H, I_STATE,G_k;// 18*18
     V3D rot_add, t_add;
     StatesGroup state_propagat;
+    StatesGroup state_last_lidar;
     PointType pointOri, pointSel, coeff;
     #endif
     //PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
@@ -1258,6 +1343,8 @@ int main(int argc, char** argv)
     lidar_selector->cy = cam_cy;
     //; NCC是归一化相关性，是相比使用patch对齐的更复杂的差异度量方式，见十四讲P230
     lidar_selector->ncc_en = ncc_en; // 0
+    /* add by crz */
+    lidar_selector->eigenValueThreshold = eigenValueThreshold;
     lidar_selector->init();
     //------------------------------- vio 部分变量初始化完毕 --------------------------
     
@@ -1269,11 +1356,14 @@ int main(int argc, char** argv)
     //    p_imu->set_acc_bias_cov(V3D(0.00001, 0.00001, 0.00001));
     p_imu->set_gyr_bias_cov(V3D(0.00003, 0.00003, 0.00003));
     p_imu->set_acc_bias_cov(V3D(0.01, 0.01, 0.01));
+    p_imu->set_state_last_lidar(state_last_lidar);
+    p_imu->set_G_k(G_k);
 
     #ifndef USE_IKFOM
     G.setZero();// 18 * 18 的矩阵，三个都是
     H_T_H.setZero();
     I_STATE.setIdentity();
+    G_k.setZero();
     #endif
 
     #ifdef USE_IKFOM
@@ -1368,7 +1458,8 @@ int main(int argc, char** argv)
                         false : true;//是否完成初始化
 
         // Step 3: 当前是图像帧，则进行视觉VIO处理
-        if (! LidarMeasures.is_lidar_end) //相机与IMU数据
+        if (! LidarMeasures.is_lidar_end&& useVio && fast_lio_is_ready &&
+        lio_first) //相机与IMU数据
         {
             cout<<"[ VIO ]: Raw feature num: "<<pcl_wait_pub->points.size() << "." << endl;//; 打印本次VIO之前，上一次LIO的LiDAR点云(转到world系下)
             if (first_lidar_time<10)
@@ -1390,7 +1481,8 @@ int main(int argc, char** argv)
                 //2 是addSparseMap，Add %d 3D points 这里不是很懂
                 //3 ComputeJ里面：UpdateState迭代更新，最后一次更新updateFrameState
                 //4 addObservation
-                lidar_selector->detect(LidarMeasures.measures.back().img, pcl_wait_pub);//这里取最后一个
+                lidar_selector->detect(LidarMeasures.measures.back().img, pcl_wait_pub);//这里取最后一个          
+                
                 // int size = lidar_selector->map_cur_frame_.size();
                 int size_sub = lidar_selector->sub_map_cur_frame_.size();
                 
@@ -1415,12 +1507,81 @@ int main(int argc, char** argv)
 
                 if(img_en) publish_frame_world_rgb(pubLaserCloudFullRes, lidar_selector);// 发布带有rgb信息的点云信息
                 publish_visual_world_sub_map(pubSubVisualCloud);
+
                 
                 geoQuat = tf::createQuaternionMsgFromRollPitchYaw(euler_cur(0), euler_cur(1), euler_cur(2));
                 publish_odometry(pubOdomAftMapped);
                 euler_cur = RotMtoEuler(state.rot_end);
                 fout_out << setw(20) << LidarMeasures.last_update_time - first_lidar_time << " " << euler_cur.transpose()*57.3 << " " << state.pos_end.transpose() << " " << state.vel_end.transpose() \
                 <<" "<<state.bias_g.transpose()<<" "<<state.bias_a.transpose()<<" "<<state.gravity.transpose()<<" "<<feats_undistort->points.size()<<endl;
+                /**
+                * @brief 如果img和lidar时间不完全一致，VIO只更新Bias
+                *        理论有待验证，反正能跑.....
+                *
+                */
+                if (onlyUpdateBias) {
+                    state_last_lidar += G_k * (state - state_propagat);
+                    // state_last_lidar += G_k * (state_propagat - state);
+                    state_last_lidar.cov +=
+                        G_k * (state.cov - state_propagat.cov) * G_k.transpose();
+                    // state_last_lidar.cov += G_k * (state_propagat.cov - state.cov) *
+                    // G_k.transpose();
+                    state = state_last_lidar;
+                    /* debug */
+                    // cout << "[DEBUG]------------->VIO" << state.pos_end << endl;
+                    // cout << "[DEBUG]------------->VIO" << state_last_lidar.pos_end <<
+                    // endl;
+                }
+                if (useKalmanSmooth) {
+                    // compute F_k from x_lidar to x_camera_hat
+                    MD(DIM_STATE, 1)
+                    F_lc_18x1 = state_propagat - state_last_lidar;
+
+                    MD(DIM_STATE, DIM_STATE)
+                    F_lc = Matrix<double, 18, 18>::Zero();
+                    F_lc(0, 0) = F_lc_18x1(0, 0);
+                    F_lc(1, 1) = F_lc_18x1(1, 0);
+                    F_lc(2, 2) = F_lc_18x1(2, 0);
+                    F_lc(3, 3) = F_lc_18x1(3, 0);
+                    F_lc(4, 4) = F_lc_18x1(4, 0);
+                    F_lc(5, 5) = F_lc_18x1(5, 0);
+                    F_lc(6, 6) = F_lc_18x1(6, 0);
+                    F_lc(7, 7) = F_lc_18x1(7, 0);
+                    F_lc(8, 8) = F_lc_18x1(8, 0);
+                    F_lc(9, 9) = F_lc_18x1(9, 0);
+                    F_lc(10, 10) = F_lc_18x1(10, 0);
+                    F_lc(11, 11) = F_lc_18x1(11, 0);
+                    F_lc(12, 12) = F_lc_18x1(12, 0);
+                    F_lc(13, 13) = F_lc_18x1(13, 0);
+                    F_lc(14, 14) = F_lc_18x1(14, 0);
+                    F_lc(15, 15) = F_lc_18x1(15, 0);
+                    F_lc(16, 16) = F_lc_18x1(16, 0);
+                    F_lc(17, 17) = F_lc_18x1(17, 0);
+
+                    MD(DIM_STATE, DIM_STATE)
+                    G_lc = state_last_lidar.cov * F_lc.transpose() *
+                            state_propagat.cov.inverse();
+                    state_last_lidar = state_last_lidar + G_lc * (state - state_propagat);
+                    state_last_lidar.cov =
+                        state_last_lidar.cov +
+                        G_lc * (state.cov - state_propagat.cov) * G_lc.transpose();
+
+                    // save data
+                    // frame_num += 1;
+                    // string img_name = std::to_string(frame_num) + ".png";
+                    // cv::imwrite(root_dir + "/image/" + img_name, img_copy);
+                    // Eigen::Quaterniond rot_(state.rot_end);
+
+                    // fout_pose << frame_num << " " << rot_.w() << " " << rot_.x() << " "
+                    //           << rot_.y() << " " << rot_.z() << " "
+                    //           << state.pos_end.transpose() << " " << int(1) << " "
+                    //           << img_name << " " << endl;
+                    /**
+                    * @brief 关掉了视觉里程计
+                    *
+                    */
+                    // publish_odometry(pubOdomAftMapped);
+                }
             }
             continue;//相机处理好了，下一轮。不用继续往下处理了，因为当前只是处理视觉的部分，而不包括激光的信息
         }
@@ -1763,7 +1924,14 @@ int main(int argc, char** argv)
                     EKF_stop_flg = true;
                 }
                 solve_time += omp_get_wtime() - solve_start;
-
+                /* debug */
+                // cout << "[DEBUG]------------->LIO" << state_last_lidar.pos_end <<
+                // endl; cout << "[DEBUG]------------->LIO" << state.pos_end << endl;
+                /**
+                * @brief state_last_lidar 保存LIO结束时的状态
+                *
+                */
+                state_last_lidar = state;
                 if (EKF_stop_flg)   break;
             }
         }
@@ -1776,7 +1944,7 @@ int main(int argc, char** argv)
         euler_cur = RotMtoEuler(state.rot_end);
         geoQuat = tf::createQuaternionMsgFromRollPitchYaw(euler_cur(0), euler_cur(1), euler_cur(2));
         publish_odometry(pubOdomAftMapped);
-
+        lio_first = true;
         /*** add the feature points to map kdtree ***/
         t3 = omp_get_wtime();
         map_incremental();
@@ -1795,7 +1963,9 @@ int main(int argc, char** argv)
         }
         *pcl_wait_pub = *laserCloudWorld;
 
-        if(!img_en) publish_frame_world(pubLaserCloudFullRes);
+        if(!img_en) {
+            publish_frame_world(pubLaserCloudFullRes);
+        }
         // publish_visual_world_map(pubVisualCloud);
         publish_effect_world(pubLaserCloudEffect);
         // publish_map(pubLaserCloudMap);

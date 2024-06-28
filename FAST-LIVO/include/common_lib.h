@@ -397,6 +397,19 @@ struct StatesGroup
 		return a;
 	};
 
+    StatesGroup& operator+=(const StatesGroup &state_add)
+	{
+        StatesGroup a;
+		a.rot_end = this->rot_end * state_add.rot_end;
+		a.pos_end = this->pos_end + state_add.pos_end;
+        a.vel_end = this->vel_end + state_add.vel_end;
+        a.bias_g  = this->bias_g  + state_add.bias_g;
+        a.bias_a  = this->bias_a  + state_add.bias_a;
+        a.gravity = this->gravity + state_add.gravity;
+        a.cov     = this->cov;
+		return a;
+	};
+
     StatesGroup& operator+=(const Matrix<double, DIM_STATE, 1> &state_add)
 	{
         this->rot_end = this->rot_end * Exp(state_add(0,0), state_add(1,0), state_add(2,0));

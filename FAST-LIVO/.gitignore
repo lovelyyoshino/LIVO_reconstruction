@@ -36,5 +36,8 @@
 #.idea/
 
 build/*
-FAST-LIVO/PCD/*
+Log/*.csv
+Log/*.txt
+Log/*.pcd
+PCD/*
 

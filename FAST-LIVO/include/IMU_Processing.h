@@ -56,6 +56,9 @@ class ImuProcess
   void set_acc_cov_scale(const V3D &scaler);
   void set_gyr_bias_cov(const V3D &b_g);
   void set_acc_bias_cov(const V3D &b_a);
+  void set_state_last_lidar(StatesGroup &state_last);
+  void set_G_k(MD(DIM_STATE, DIM_STATE) & G_k_yy);
+  MD(DIM_STATE, DIM_STATE) get_G_k();
   #ifdef USE_IKFOM
   Eigen::Matrix<double, 12, 12> Q;
   void Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr pcl_un_);
@@ -73,6 +76,8 @@ class ImuProcess
   V3D cov_gyr_scale;
   V3D cov_bias_gyr;
   V3D cov_bias_acc;
+  MD(DIM_STATE, DIM_STATE) G_k;
+  StatesGroup state_last_lidar;
   double first_lidar_time;
 
  private:

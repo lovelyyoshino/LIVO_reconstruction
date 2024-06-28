@@ -1,0 +1,72 @@
+feature_extract_enable : 0
+point_filter_num : 2
+max_iteration : 30
+dense_map_enable : 1
+filter_size_surf : 0.15 #0.15
+filter_size_map : 0.3 #0.3
+cube_side_length : 20
+debug : 0
+grid_size : 40
+patch_size : 8 #8
+img_enable : 1
+lidar_enable : 1
+outlier_threshold : 150 # 78 100 156 150
+ncc_en: false
+ncc_thre: 0.5
+img_point_cov : 1000 # 1000
+laser_point_cov : 0.001 # 0.001
+# crz add
+img_time_offset : 0.00   #手动给图像时间戳一个延迟，测试用 0.09442971是传输时间，0.001是曝光时间
+onlyUpdateBias : false #如果只利用视觉模块更新状态中的Bias，true
+useKalmanSmooth : true 
+useVio : true   #如果使用视觉模块，true
+eigenValueThreshold : 0 #450000 no use!!!!
+resolution : 0.5
+nearby_type : 26
+# crz add
+cam_fx: 617.971050917033
+cam_fy: 616.445131524790
+cam_cx: 327.710279392468
+cam_cy: 253.976983707814
+
+common:
+    lid_topic:  "/velodyne_points"
+    imu_topic:  "/handsfree/imu"
+    # imu_topic:  "/imu/data"
+
+preprocess:
+    lidar_type: 2 # Livox Avia LiDAR
+    scan_line: 32
+    blind: 5 # blind x m disable
+
+mapping:
+    acc_cov_scale: 100
+    gyr_cov_scale: 10000
+    fov_degree:    90
+    extrinsic_T: [ -0.15905, -0.00067, 0.16824 ]
+    # extrinsic_T: [ 0.65, 0, 0 ]
+    extrinsic_R: [ 1, 0, 0,
+                   0, 1, 0,
+                   0, 0, 1]
+
+camera:
+    # img_topic: /usb_cam/image_raw
+    # img_topic:  /camera0/image_raw
+    # img_topic: /left_camera/image
+    img_topic: /camera/color
+    #xiyuan
+    Rcl: [0,-1,0,
+          0,0,-1,
+          1,0,0]
+    Pcl: [-0.27255, 0.00053, -0.17954]
+    # Rcl: [0,0,1,
+    #       -1,0,-1,
+    #       0,-1,0]
+    # Pcl: [0.30456, 0.00065, 0.065376]
+    # Pcl: [0.27255, -0.00053, 0.17954]
+    # Rcl: [ -0.00800608, -8.30487e-05,     0.999968,
+    #        -0.999963,   0.00337199,  -0.00800575,
+    #        -0.00337122,   -0.999995, -0.000110041]
+    # Pcl: [0.0815759, 0.022576, 0.0551316]
+
+    

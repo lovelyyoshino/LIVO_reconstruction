@@ -14,6 +14,8 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 #include <set>
+#include <Eigen/Eigenvalues>
+#include <Eigen/Dense>
 
 namespace lidar_selection {
 
@@ -58,6 +60,8 @@ class LidarSelector {
     Matrix<double, DIM_STATE, DIM_STATE> G, H_T_H; // 18*18
     MatrixXd H_sub, K;
     cv::flann::Index Kdtree;
+    /* add by crz */
+    int eigenValueThreshold;
 
     LidarSelector(const int grid_size, SparseMap* sparse_map);
 

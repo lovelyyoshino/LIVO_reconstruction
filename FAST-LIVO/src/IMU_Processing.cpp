@@ -94,6 +94,14 @@ void ImuProcess::set_acc_bias_cov(const V3D &b_a)
   cov_bias_acc = b_a;
 }
 
+void ImuProcess::set_state_last_lidar(StatesGroup &state_last) {
+  state_last_lidar = state_last;
+}
+void ImuProcess::set_G_k(MD(DIM_STATE, DIM_STATE) & G_k_yy) { G_k = G_k_yy; }
+
+MD(DIM_STATE, DIM_STATE) ImuProcess::get_G_k() { return G_k; }
+
+
 #ifdef USE_IKFOM
 void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N)
 {
@@ -757,6 +765,7 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
     double &&offs_t = tail->header.stamp.toSec() - pcl_beg_time;  //offs_t是相对于上次数据同步帧的时间戳，也就是图像数据或者lidar数据
     // cout<<setw(20)<<"offset_t: "<<offs_t<<"tail->header.stamp.toSec(): "<<tail->header.stamp.toSec()<<endl;
     IMUpose.push_back(set_pose6d(offs_t, acc_imu, angvel_avr, vel_imu, pos_imu, R_imu));
+    G_k = state_last_lidar.cov * F_x.transpose() * state_inout.cov.inverse();
   }
 
     //疑问：这里应该肯定满足？因为pcl_beg_time是上次图像的时间戳，imu_end_time是这次对齐的时间戳，
