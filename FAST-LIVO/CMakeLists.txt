@@ -65,7 +65,9 @@ find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 FIND_PACKAGE(OpenCV REQUIRED)
 FIND_PACKAGE(Sophus REQUIRED)
-FIND_PACKAGE(Boost REQUIRED COMPONENTS thread)
+FIND_PACKAGE(GTSAM REQUIRED)
+FIND_PACKAGE(Ceres REQUIRED)
+FIND_PACKAGE(Boost REQUIRED COMPONENTS thread timer serialization)
 set(Sophus_LIBRARIES libSophus.so)
 
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
@@ -77,6 +79,9 @@ include_directories(
   ${PYTHON_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   ${Sophus_INCLUDE_DIRS}
+  ${GTSAM_INCLUDE_DIR}
+  ${CERES_INCLUDE_DIRS}
+  ${BOOST_INCLUDE_DIRS}
   include)
 
 add_message_files(
@@ -92,7 +97,7 @@ generate_messages(
 
 catkin_package(
   CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime cv_bridge image_transport vikit_common vikit_ros
-  DEPENDS EIGEN3 PCL OpenCV Sophus
+  DEPENDS EIGEN3 PCL OpenCV Sophus GTSAM Ceres Boost
   INCLUDE_DIRS include
 )
 
@@ -113,6 +118,14 @@ add_executable(fastlivo_mapping src/laserMapping.cpp
                                 )
 target_link_libraries(fastlivo_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} vio ikdtree)
 target_include_directories(fastlivo_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
+
+add_executable(std_loop src/loop_closure.cpp
+                        src/STD.cpp
+                        )
+target_link_libraries(std_loop ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} gtsam ceres)
+target_include_directories(std_loop PRIVATE ${PYTHON_INCLUDE_DIRS} ${Sophus_INCLUDE_DIRS} ${GTSAM_INCLUDE_DIR} ${CERES_INCLUDE_DIRS} ${BOOST_INCLUDE_DIRS})
+
+
 
 # add_executable(kd_tree_test include/ikd-Tree/ikd_Tree.cpp src/kd_tree_test.cpp)
 # target_link_libraries(kd_tree_test ${PCL_LIBRARIES})

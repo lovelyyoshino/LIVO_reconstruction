@@ -80,7 +80,6 @@ void Frame::setKeyPoints()
         key_pts_[i] = nullptr;
   std::for_each(fts_.begin(), fts_.end(), [&](FeaturePtr ftr){ if(ftr->point != nullptr) checkKeyPoints(ftr); });
 }
-
 /// @brief 找到五点法中需要的5个点
         /* 举例：选取的是这5个点
          * 以key_pts_[2]为例：
