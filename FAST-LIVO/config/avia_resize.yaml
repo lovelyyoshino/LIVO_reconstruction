@@ -20,14 +20,26 @@ cam_fy: 1850.424325
 cam_cx: 689.121011
 cam_cy: 525.758177
 
+# crz add
+img_time_offset : 0.04   #手动给图像时间戳一个延迟，测试用 0.09442971是传输时间，0.001是曝光时间
+onlyUpdateBias : false #如果只利用视觉模块更新状态中的Bias，true
+useKalmanSmooth : true 
+useVio : true   #如果使用视觉模块，true
+eigenValueThreshold : 0 #450000 no use!!!!
+resolution : 0.5
+nearby_type : 26
+
+pcd_save:
+  pcd_save_en: true
+
 common:
     lid_topic:  "/livox/lidar"
-    imu_topic:  "/livox/imu"
+    imu_topic:  "/avia/livox/imu"
 
 preprocess:
     lidar_type: 1 # Livox Avia LiDAR
     scan_line: 6
-    blind: 5 # blind x m disable
+    blind: 0.4 # blind x m disable
 
 mapping:
     acc_cov_scale: 100

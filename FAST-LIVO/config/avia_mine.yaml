@@ -37,7 +37,7 @@ common:
 preprocess:
     lidar_type: 1 # Livox Avia LiDAR
     scan_line: 6
-    blind: 5 # blind x m disable
+    blind: 0.3 # blind x m disable
 
 mapping:
     acc_cov_scale: 100

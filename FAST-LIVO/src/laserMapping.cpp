@@ -462,26 +462,73 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
 
 /// @brief  livox激光雷达的消息回调函数
 /// @param msg 激光雷达消息
+// void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg) 
+// {
+//     //数据加锁，说明IMU Lidar camera同时只有一个数据能放buffer
+//     mtx_buffer.lock();
+//     if (msg->header.stamp.toSec() < last_timestamp_lidar)
+//     {
+//         ROS_ERROR("lidar loop back, clear buffer");
+//         lidar_buffer.clear();
+//     }
+//     printf("[ INFO ]: get point cloud at time: %.6f and size: %d.\n", msg->header.stamp.toSec(), int(msg->point_num));
+//     PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
+//     // 对收到的原始点云进行一些预处理，得到后面要使用的面点
+//     p_pre->process(msg, ptr);// 把livoax数据转成pcl点云
+//     printf("[ INFO ]: after point size:%d \n",int(ptr->points.size()));
+//     lidar_buffer.push_back(ptr);
+//     time_buffer.push_back(msg->header.stamp.toSec());//把时间也放入time_buffer
+//     last_timestamp_lidar = msg->header.stamp.toSec();
+
+//     mtx_buffer.unlock();//把时间也放入time_buffer
+//     sig_buffer.notify_all();
+// }
 void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg) 
 {
-    //数据加锁，说明IMU Lidar camera同时只有一个数据能放buffer
+    // 数据加锁，说明IMU Lidar camera同时只有一个数据能放buffer
     mtx_buffer.lock();
     if (msg->header.stamp.toSec() < last_timestamp_lidar)
     {
         ROS_ERROR("lidar loop back, clear buffer");
         lidar_buffer.clear();
     }
-    printf("[ INFO ]: get point cloud at time: %.6f.\n", msg->header.stamp.toSec());
+
+    // // 打印CustomMsg的基本信息
+    // printf("[ INFO ]: CustomMsg header: %s \n", msg->header.frame_id.c_str());
+    // printf("[ INFO ]: CustomMsg timebase: %llu \n", msg->timebase);
+    // printf("[ INFO ]: CustomMsg point_num: %u \n", msg->point_num);
+    // printf("[ INFO ]: CustomMsg lidar_id: %u \n", msg->lidar_id);
+
+    // // 检查 points 数组是否为空
+    // if (msg->points.empty()) {
+    //     printf("[ WARN ]: CustomMsg points array is empty!\n");
+    // } else {
+    //     printf("[ INFO ]: CustomMsg points array size: %lu \n", msg->points.size());
+    // }
+
+    // 打印获取到的点云信息
+    // printf("[ INFO ]: get point cloud at time: %.6f and size: %d.\n", msg->header.stamp.toSec(), int(msg->point_num));
+    
     PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
+    
     // 对收到的原始点云进行一些预处理，得到后面要使用的面点
-    p_pre->process(msg, ptr);// 把livox数据转成pcl点云
+    p_pre->process(msg, ptr); // 把livox数据转成pcl点云
+    
+    // 打印处理后的点云大小
+    // printf("[ INFO ]: after point size: %d \n", int(ptr->points.size()));
+    
+    // 将点云和时间戳推入缓存
     lidar_buffer.push_back(ptr);
-    time_buffer.push_back(msg->header.stamp.toSec());//把时间也放入time_buffer
+    time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_lidar = msg->header.stamp.toSec();
 
-    mtx_buffer.unlock();//把时间也放入time_buffer
+    // 解锁并通知其他等待线程
+    mtx_buffer.unlock();
     sig_buffer.notify_all();
 }
+
+
+
 
 /// @brief  IMU消息的回调函数：存储IMU消息到buf中
 /// @param msg_in IMU消息
@@ -490,7 +537,6 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     publish_count ++;
     //cout<<"msg_in:"<<msg_in->header.stamp.toSec()<<endl;
     sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
-    
     double timestamp = msg->header.stamp.toSec();
     mtx_buffer.lock();//数据加锁
 
@@ -602,11 +648,11 @@ bool sync_packages(LidarMeasureGroup &meas)
         //    处理第2帧的LiDAR数据。
         //; 另外注意：这里的lidar时间戳是以一帧的结束为标准的，因为后面去畸变是把一帧点云对齐到结尾
         if (lidar_buffer.empty()) {
-            // ROS_ERROR("out sync");
+            // ROS_ERROR("out sync by buffer empty");
             return false;
         }
         //这里的LiDAR是单独存成了PCL点云格式，所以后面用一个单独的time_buffer来存储它的时间戳了
-        meas.lidar = lidar_buffer.front(); // push the firsrt lidar topic       
+        meas.lidar = lidar_buffer.front(); // push the firsrt lidar topic      
         //; 如果这帧lidar点云无效，则要弹出图像数据。但是这个地方正常来说应该不会发生？
         if(meas.lidar->points.size() <= 1)
         {
@@ -618,7 +664,7 @@ bool sync_packages(LidarMeasureGroup &meas)
             }
             mtx_buffer.unlock();
             sig_buffer.notify_all();
-            // ROS_ERROR("out sync");
+            // ROS_ERROR("out sync image buffer");
             return false;
         }
         sort(meas.lidar->points.begin(), meas.lidar->points.end(), time_list);  //对lidar中的点云根据时间戳进行排序
@@ -633,7 +679,7 @@ bool sync_packages(LidarMeasureGroup &meas)
     //没图像，只有雷达数据，收集IMU信息
     if (img_buffer.empty()) { // no img topic, means only has lidar topic
         if (last_timestamp_imu < lidar_end_time+0.02) {  // lidar_pushed 表示meas中的lidar点云插入了，但是还没有从buf中弹出
-            // ROS_ERROR("out sync");
+            // ROS_ERROR("out sync by last time");
             return false;
         }
         struct MeasureGroup m; //standard method to keep imu message.

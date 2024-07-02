@@ -125,7 +125,9 @@ add_executable(std_loop src/loop_closure.cpp
 target_link_libraries(std_loop ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} gtsam ceres)
 target_include_directories(std_loop PRIVATE ${PYTHON_INCLUDE_DIRS} ${Sophus_INCLUDE_DIRS} ${GTSAM_INCLUDE_DIR} ${CERES_INCLUDE_DIRS} ${BOOST_INCLUDE_DIRS})
 
-
+add_executable(mergecloud src/mergecloud.cpp)
+target_link_libraries(mergecloud ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+add_dependencies(mergecloud ${catkin_EXPORTED_TARGETS})
 
 # add_executable(kd_tree_test include/ikd-Tree/ikd_Tree.cpp src/kd_tree_test.cpp)
 # target_link_libraries(kd_tree_test ${PCL_LIBRARIES})

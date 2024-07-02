@@ -88,7 +88,7 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
     pl_buff[i].clear();
     pl_buff[i].reserve(plsize);
   }
-
+ std::cout << "[INFO] Initial point cloud size: " << plsize << std::endl;
   if (feature_enabled)
   {
     for(uint i=1; i<plsize; i++)
@@ -161,6 +161,7 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
     }
   }
   // printf("feature extraction time: %lf \n", omp_get_wtime()-t1);
+   std::cout << "[INFO] Processed point cloud size: " << pl_full.size() << std::endl;
 }
 
 void Preprocess::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
