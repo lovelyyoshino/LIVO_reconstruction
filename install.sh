@@ -58,7 +58,7 @@ mkdir build && cd build
 cmake .. && sudo make install
 #安装后,头文件安装在/usr/local/include/eigen3/
 #移动头文件
-cp -r /usr/local/include/eigen3/Eigen /usr/local/include 
+sudo cp -r /usr/local/include/eigen3/Eigen /usr/local/include 
 cd ../../
 
 
