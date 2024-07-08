@@ -1,3 +1,7 @@
+#代理挂载
+#export http_proxy="http://127.0.0.1:7890"
+#export https_proxy="http://127.0.0.1:7890"
+
 # !/bin/bash
 sudo apt-get update
 sudo apt-get --fix-broken install
@@ -132,8 +136,18 @@ make -j16
 sudo make install
 cd ../../
 
+# #如果 pcl需要vtk:https://www.8kiz.cn/archives/8573.html
+# git clone https://gitlab.kitware.com/vtk/vtk.git
+# cd vtk
+# git checkout v9.2.0
+# mkdir build && cd build
+# cmake ..
+# make -j16
+# sudo make install
+# cd ../../
 
-# 删除原来错误的cmake版本：https://blog.csdn.net/qq_42731705/article/details/129379831
+
+# 删除原来错误的cmake版本sudo make uninstall or：https://blog.csdn.net/qq_42731705/article/details/129379831
 # 多版本pcl：https://blog.csdn.net/qq_42731705/article/details/129380907
 git clone https://github.com/PointCloudLibrary/pcl.git
 cd pcl
