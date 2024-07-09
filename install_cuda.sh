@@ -32,10 +32,10 @@ sudo add-apt-repository ppa:graphics-drivers/ppa
 sudo apt update
 
 # Install nvidia driver with dependencies
-sudo apt install libnvidia-common-515
-sudo apt install nvidia-utils-515
-sudo apt install libnvidia-gl-515
-sudo apt install nvidia-driver-515
+sudo apt install libnvidia-common-535
+sudo apt install nvidia-utils-535
+sudo apt install libnvidia-gl-535
+sudo apt install nvidia-driver-535
 
 # https://blog.csdn.net/ytusdc/article/details/132404002
 mkdir ~/cuda_package
