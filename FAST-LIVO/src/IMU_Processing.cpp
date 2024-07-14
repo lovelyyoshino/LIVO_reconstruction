@@ -39,6 +39,7 @@ void ImuProcess::Reset()
   init_iter_num     = 1;
   v_imu_.clear();
   IMUpose.clear();
+  all_IMUpose.clear();
   last_imu_.reset(new sensor_msgs::Imu());
   cur_pcl_un_.reset(new PointCloudXYZI());
 }
@@ -639,7 +640,7 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
   v_imu.push_front(last_imu_);// 将上一帧最后尾部的imu添加到当前帧头部的imu
   const double &imu_beg_time = v_imu.front()->header.stamp.toSec();
   const double &imu_end_time = v_imu.back()->header.stamp.toSec();
-  const double pcl_beg_time = MAX(lidar_meas.lidar_beg_time, lidar_meas.last_update_time); // pcl_beg_time是图像时间戳或者LiDAR点云时间戳
+  const double pcl_beg_time = std::max(lidar_meas.lidar_beg_time, lidar_meas.last_update_time); // pcl_beg_time是图像时间戳或者LiDAR点云时间戳
   // const double &pcl_beg_time = meas.lidar_beg_time;
   
   /*** sort point clouds by offset time ***/
@@ -653,8 +654,7 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
   const double pcl_offset_time = lidar_meas.is_lidar_end? 
                                         (pcl_end_time - lidar_meas.lidar_beg_time) * double(1000):
                                         0.0;
-  //! 疑问：bug？如果这个不是lidar点云结束，那么 pcl_offset_time == 0，那下面一个点云都不会加进去？
-  //; 解答：确实是这样，以为要去畸变到lidar末尾时间戳，而如果当前是图像时间，那么这帧图像后面的IMU数据是缺失的
+  //! 如果这个不是lidar点云结束，那么 pcl_offset_time == 0，那下面一个点云都不会加进去，需要等待camera都处理结束才会加入。这就会导致这帧图像后面的IMU数据是缺失的
   while (pcl_it != pcl_it_end && pcl_it->curvature <= pcl_offset_time)
   {
     pcl_out.push_back(*pcl_it);
@@ -680,9 +680,10 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
   // 所以这里插入的初始位姿就是上一帧图像优化之后的位姿，因此在这之前需要把前面所有的IMU预测的位姿都清空，
   // 从而用于存储本次IMU积分预测的位姿
   IMUpose.clear();
+  Pose6D imu_pose = set_pose6d(0.0, acc_s_last, angvel_last, state_inout.vel_end, state_inout.pos_end, state_inout.rot_end);
   // IMUpose.push_back(set_pose6d(0.0, Zero3d, Zero3d, state.vel_end, state.pos_end, state.rot_end));
-  IMUpose.push_back(set_pose6d(0.0, acc_s_last, angvel_last, state_inout.vel_end, state_inout.pos_end, state_inout.rot_end));
-
+  IMUpose.push_back(imu_pose);
+  all_IMUpose.push_back(imu_pose);
   /*** forward propagation at each imu point ***/
   V3D acc_imu(acc_s_last), angvel_avr(angvel_last), acc_avr, vel_imu(state_inout.vel_end), pos_imu(state_inout.pos_end);
   M3D R_imu(state_inout.rot_end);
@@ -764,7 +765,9 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
     acc_s_last  = acc_imu;
     double &&offs_t = tail->header.stamp.toSec() - pcl_beg_time;  //offs_t是相对于上次数据同步帧的时间戳，也就是图像数据或者lidar数据
     // cout<<setw(20)<<"offset_t: "<<offs_t<<"tail->header.stamp.toSec(): "<<tail->header.stamp.toSec()<<endl;
-    IMUpose.push_back(set_pose6d(offs_t, acc_imu, angvel_avr, vel_imu, pos_imu, R_imu));
+    imu_pose = set_pose6d(offs_t, acc_imu, angvel_avr, vel_imu, pos_imu, R_imu);
+    IMUpose.push_back(imu_pose);
+    all_IMUpose.push_back(imu_pose);
     G_k = state_last_lidar.cov * F_x.transpose() * state_inout.cov.inverse();
   }
 
@@ -813,7 +816,7 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
     //      因为如果当前是图像的话，对这帧LiDAR点云去畸变也用不上，因为图像用的是上一帧的LiDAR点云。
     //  但是：前面对位姿进行了清空，这不就导致去畸变的时候有很多位姿是缺失的吗？
   auto it_pcl = pcl_out.points.end() - 1;
-  for (auto it_kp = IMUpose.end() - 1; it_kp != IMUpose.begin(); it_kp--)
+  for (auto it_kp = all_IMUpose.end() - 1; it_kp != all_IMUpose.begin(); it_kp--)
   {
     auto head = it_kp - 1;
     auto tail = it_kp;
@@ -847,6 +850,10 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
 
       if (it_pcl == pcl_out.points.begin()) break;
     }
+  }
+  if (lidar_meas.is_lidar_end)
+  {
+      all_IMUpose.clear(); // 清空所有保存的 IMU 位姿
   }
 }
 

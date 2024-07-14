@@ -94,6 +94,7 @@ class ImuProcess
   sensor_msgs::ImuConstPtr last_imu_;
   deque<sensor_msgs::ImuConstPtr> v_imu_;
   vector<Pose6D> IMUpose;
+  std::vector<Pose6D> all_IMUpose; // 新的 IMU 位姿结构，用于保存所有的 IMU 位姿
   vector<M3D>    v_rot_pcl_;
   M3D Lid_rot_to_IMU;
   V3D Lid_offset_to_IMU;
