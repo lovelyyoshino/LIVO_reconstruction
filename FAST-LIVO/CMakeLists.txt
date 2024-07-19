@@ -68,6 +68,8 @@ FIND_PACKAGE(Sophus REQUIRED)
 FIND_PACKAGE(GTSAM REQUIRED)
 FIND_PACKAGE(Ceres REQUIRED)
 FIND_PACKAGE(Boost REQUIRED COMPONENTS thread timer serialization)
+FIND_PACKAGE(TBB REQUIRED)
+
 set(Sophus_LIBRARIES libSophus.so)
 
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
@@ -82,6 +84,7 @@ include_directories(
   ${GTSAM_INCLUDE_DIR}
   ${CERES_INCLUDE_DIRS}
   ${BOOST_INCLUDE_DIRS}
+  ${TBB_INCLUDE_DIRS}
   include)
 
 add_message_files(
@@ -97,7 +100,7 @@ generate_messages(
 
 catkin_package(
   CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime cv_bridge image_transport vikit_common vikit_ros
-  DEPENDS EIGEN3 PCL OpenCV Sophus GTSAM Ceres Boost
+  DEPENDS EIGEN3 PCL OpenCV Sophus GTSAM Ceres Boost libtbb
   INCLUDE_DIRS include
 )
 
@@ -115,9 +118,12 @@ add_library(vio src/lidar_selection.cpp
 add_executable(fastlivo_mapping src/laserMapping.cpp 
                                 src/IMU_Processing.cpp
                                 src/preprocess.cpp
+                                src/GeographicLib/Geocentric.cpp
+                                src/GeographicLib/LocalCartesian.cpp
+                                src/GeographicLib/Math.cpp
                                 )
-target_link_libraries(fastlivo_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} vio ikdtree)
-target_include_directories(fastlivo_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
+target_link_libraries(fastlivo_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} vio ikdtree gtsam ${TBB_LIBRARIES})
+target_include_directories(fastlivo_mapping PRIVATE ${PYTHON_INCLUDE_DIRS} ${GTSAM_INCLUDE_DIR} ${TBB_INCLUDE_DIRS})
 
 add_executable(std_loop src/loop_closure.cpp
                         src/STD.cpp
