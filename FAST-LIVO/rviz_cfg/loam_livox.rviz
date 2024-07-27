@@ -36,7 +36,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: currPoints
+    SyncSource: ""
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -84,7 +84,7 @@ Visualization Manager:
           Class: rviz/PointCloud2
           Color: 238; 238; 236
           Color Transformer: RGB8
-          Decay Time: 999999
+          Decay Time: 1
           Enabled: true
           Invert Rainbow: false
           Max Color: 255; 255; 255
@@ -96,7 +96,7 @@ Visualization Manager:
           Size (Pixels): 1
           Size (m): 0.05000000074505806
           Style: Points
-          Topic: /cloud_registered
+          Topic: /fast_lio_sam/mapping/history_cloud_map
           Unreliable: true
           Use Fixed Frame: true
           Use rainbow: true
@@ -299,7 +299,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 100.60456085205078
+      Distance: 46.721168518066406
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -337,5 +337,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1386
-  X: 179
-  Y: 165
+  X: 177
+  Y: 132

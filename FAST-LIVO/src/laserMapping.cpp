@@ -214,6 +214,7 @@ float surroundingkeyframeAddingDistThreshold;  //  判断是否为关键帧的�
 float surroundingkeyframeAddingAngleThreshold; //  判断是否为关键帧的角度阈值
 float surroundingKeyframeDensity;
 float surroundingKeyframeSearchRadius;
+long int recontruct_map_index = 0;
 
 // Loop close
 bool aLoopIsClosed = false;
@@ -332,7 +333,7 @@ shared_ptr<Preprocess> p_pre(new Preprocess());
 PointCloudXYZRGB::Ptr pcl_wait_save(new PointCloudXYZRGB());  //add save rbg map
 PointCloudXYZI::Ptr pcl_wait_save_lidar(new PointCloudXYZI());  //add save xyzi map
 
-bool pcd_save_en = true;
+bool pcd_save_en = false;
 int pcd_save_interval = 20, pcd_index = 0;
 
 
@@ -418,6 +419,48 @@ pcl::PointCloud<PointType>::Ptr transformPointCloud(pcl::PointCloud<PointType>::
     }
     return cloudOut;
 }
+
+
+pcl::PointCloud<PointType>::Ptr transformPointCloudRGB_None(PointCloudXYZRGB::Ptr cloudIn, PointTypePose *transformIn)
+{
+    pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
+
+    int cloudSize = cloudIn->size();
+    cloudOut->resize(cloudSize);
+    
+   // 注意：lio_sam 中的姿态用的euler表示，而fastlio存的姿态角是旋转矢量。而 pcl::getTransformation是将euler_angle 转换到rotation_matrix 不合适，注释
+  // Eigen::Affine3f transCur = pcl::getTransformation(transformIn->x, transformIn->y, transformIn->z, transformIn->roll, transformIn->pitch, transformIn->yaw);
+    #ifdef USE_IKFOM
+    Eigen::Isometry3d T_b_lidar(state_point.offset_R_L_I);
+    T_b_lidar.pretranslate(state_point.offset_T_L_I);         //  获取  body2lidar  外参
+    #else
+    Eigen::Isometry3d T_b_lidar = Eigen::Isometry3d::Identity();
+    T_b_lidar.translation() =  Lidar_offset_to_IMU;       //  获取  body2lidar  外参
+    #endif
+    
+    
+          
+
+    Eigen::Affine3f T_w_b_ = pcl::getTransformation(transformIn->x, transformIn->y, transformIn->z, transformIn->roll, transformIn->pitch, transformIn->yaw);
+    Eigen::Isometry3d T_w_b ;          //   world2body  
+    T_w_b.matrix() = T_w_b_.matrix().cast<double>();
+
+    Eigen::Isometry3d  T_w_lidar  =  T_w_b * T_b_lidar  ;           //  T_w_lidar  转换矩阵
+
+    Eigen::Isometry3d transCur = T_w_lidar;        
+
+#pragma omp parallel for num_threads(numberOfCores)
+    for (int i = 0; i < cloudSize; ++i)
+    {
+        const auto &pointFrom = cloudIn->points[i];
+        cloudOut->points[i].x = transCur(0, 0) * pointFrom.x + transCur(0, 1) * pointFrom.y + transCur(0, 2) * pointFrom.z + transCur(0, 3);
+        cloudOut->points[i].y = transCur(1, 0) * pointFrom.x + transCur(1, 1) * pointFrom.y + transCur(1, 2) * pointFrom.z + transCur(1, 3);
+        cloudOut->points[i].z = transCur(2, 0) * pointFrom.x + transCur(2, 1) * pointFrom.y + transCur(2, 2) * pointFrom.z + transCur(2, 3);
+        cloudOut->points[i].intensity = 0;
+    }
+    return cloudOut;
+}
+
 
 
 /**
@@ -544,12 +587,14 @@ void RGBpointWorldToBody(PointCloudXYZRGB::Ptr pi, PointCloudXYZRGB::Ptr po)
         #else
         V3D p_body(state.rot_end.transpose() * (p_global - state.pos_end) - Lidar_offset_to_IMU);
         #endif
-        po->points[i].x = p_body(0);
-        po->points[i].y = p_body(1);
-        po->points[i].z = p_body(2);
-        po->points[i].r = pi->points[i].r;
-        po->points[i].g = pi->points[i].g;
-        po->points[i].b = pi->points[i].b;
+        PointTypeRGB temp_point;
+        temp_point.x = p_body(0);
+        temp_point.y = p_body(1);
+        temp_point.z = p_body(2);
+        temp_point.r = pi->points[i].r;
+        temp_point.g = pi->points[i].g;
+        temp_point.b = pi->points[i].b;
+        po->points.emplace_back(temp_point);
     }
 }
 
@@ -1069,6 +1114,8 @@ void publish_frame_world_rgb(const ros::Publisher &pubLaserCloudFullRes, lidar_s
 {
     uint size = pcl_wait_pub->points.size();
     PointCloudXYZRGB::Ptr laserCloudWorldRGB(new PointCloudXYZRGB(size, 1));
+    laserCloudLidarRGB = PointCloudXYZRGB::Ptr(new PointCloudXYZRGB());
+    // laserCloudLidarRGB = PointCloudXYZRGB::Ptr(new PointCloudXYZRGB(size, 1));
     if (img_en)
     {
         laserCloudWorldRGB->clear();
@@ -1116,6 +1163,7 @@ void publish_frame_world_rgb(const ros::Publisher &pubLaserCloudFullRes, lidar_s
     /* 2. noted that pcd save will influence the real-time performences **/
     if (1)
     {
+        // cout<<"save map"<<laserCloudWorldRGB->size()<<","<<laserCloudLidarRGB->size()<<endl;
         //转回到lidar坐标系下
         RGBpointWorldToBody(laserCloudWorldRGB, laserCloudLidarRGB);
         *pcl_wait_save += *laserCloudWorldRGB;
@@ -1748,14 +1796,13 @@ void saveKeyFramesAndFactor()
     thisPose6D.yaw = latestEstimate.rotation().yaw();
     thisPose6D.time = lidar_end_time;
     cloudKeyPoses6D->push_back(thisPose6D);
-
     // 位姿协方差
-    poseCovariance = isam->marginalCovariance(isamCurrentEstimate.size() - 1);
+    // poseCovariance = isam->marginalCovariance(isamCurrentEstimate.size() - 1);
 
     // FAST_LIVO 更新
     state.pos_end << thisPose6D.x, thisPose6D.y, thisPose6D.z;
     state.rot_end = EulerToQuat(thisPose6D.roll, thisPose6D.pitch, thisPose6D.yaw);
-    state.cov = poseCovariance;
+    // state.cov = poseCovariance;
     // ESKF状态和方差  更新
     // state_ikfom state_updated = kf.get_x(); //  获取cur_pose (还没修正)
     // Eigen::Vector3d pos(latestEstimate.translation().x(), latestEstimate.translation().y(), latestEstimate.translation().z());
@@ -1785,9 +1832,9 @@ void saveKeyFramesAndFactor()
     // // pcl::copyPointCloud(*feats_undistort,  *thisCornerKeyFrame);
     pcl::copyPointCloud(*feats_undistort, *thisSurfKeyFrame); // 存储关键帧,没有降采样的点云
 
-    surfCloudKeyFrames.push_back(thisSurfKeyFrame);
+    // surfCloudKeyFrames.push_back(thisSurfKeyFrame);
     surfCloudKeyFramesRGB.push_back(laserCloudLidarRGB); // todo：这个转到局部坐标。然后优化的是path位置
-
+    cout<< "------------- rgb keyframe size: "<< surfCloudKeyFramesRGB.size()<<endl;
     // updatePath(thisPose6D); //  可视化update后的path
 }
 
@@ -1858,6 +1905,7 @@ void correctPoses()
             // 更新里程计轨迹
             updatePath(cloudKeyPoses6D->points[i]);
         }
+        recontruct_map_index = 0;
         // 清空局部map， reconstruct  ikdtree submap
         recontructMap();
         ROS_INFO("ISMA2 Update");
@@ -1873,6 +1921,7 @@ void correctPoses()
         map_msg.header.stamp = ros::Time().now();
         map_msg.header.frame_id = "camera_init";
         pubHistoryRGBMap.publish(map_msg);
+        cout<< "not closed loop, pub map"<<surfCloudKeyFramesRGB.size()<<endl;
         }
 }
 
@@ -1924,7 +1973,7 @@ void loopFindNearKeyframes(pcl::PointCloud<PointType>::Ptr &nearKeyframes, const
     // 提取key索引的关键帧前后相邻若干帧的关键帧特征点集合
     nearKeyframes->clear();
     int cloudSize = copy_cloudKeyPoses6D->size();
-    auto surfcloud_keyframes_size = surfCloudKeyFrames.size() ;
+    auto surfcloud_keyframes_size = surfCloudKeyFramesRGB.size() ;
     for (int i = -searchNum; i <= searchNum; ++i)
     {
         int keyNear = key + i;
@@ -1935,7 +1984,7 @@ void loopFindNearKeyframes(pcl::PointCloud<PointType>::Ptr &nearKeyframes, const
             continue;
 
         // 注意：cloudKeyPoses6D 存储的是 T_w_b , 而点云是lidar系下的，构建icp的submap时，需要通过外参数T_b_lidar 转换 , 参考pointBodyToWorld 的转换
-        *nearKeyframes += *transformPointCloud(surfCloudKeyFrames[keyNear], &copy_cloudKeyPoses6D->points[keyNear]); //  fast-lio 没有进行特征提取，默认点云就是surf
+        *nearKeyframes += *transformPointCloudRGB_None(surfCloudKeyFramesRGB[keyNear], &copy_cloudKeyPoses6D->points[keyNear]); //  fast-lio 没有进行特征提取，默认点云就是surf
     }
 
     if (nearKeyframes->empty())
@@ -2212,8 +2261,8 @@ void readParameters(ros::NodeHandle &nh)
     nh.param<float>("poseCovThreshold", poseCovThreshold, 25.0);
 
     // save keyframes
-    nh.param<float>("surroundingkeyframeAddingDistThreshold", surroundingkeyframeAddingDistThreshold, 20.0);
-    nh.param<float>("surroundingkeyframeAddingAngleThreshold", surroundingkeyframeAddingAngleThreshold, 0.2);
+    nh.param<float>("surroundingkeyframeAddingDistThreshold", surroundingkeyframeAddingDistThreshold, 0.1);
+    nh.param<float>("surroundingkeyframeAddingAngleThreshold", surroundingkeyframeAddingAngleThreshold, 0.2);//稠密点云，这里我们空间内存比较小，就只能设置0.2
     nh.param<float>("surroundingKeyframeDensity", surroundingKeyframeDensity, 1.0);
     nh.param<float>("surroundingKeyframeSearchRadius", surroundingKeyframeSearchRadius, 50.0);
     nh.param<float>("mappingSurfLeafSize", mappingSurfLeafSize, 0.2);

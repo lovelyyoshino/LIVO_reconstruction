@@ -21,8 +21,8 @@ cam_cx: 689.121011
 cam_cy: 525.758177
 
 common:
-    lid_topic:  "/livox/lidar"
-    imu_topic:  "/livox/imu"
+    lid_topic:  "/avia/livox/lidar"
+    imu_topic:  "/avia/livox/imu"
 
 preprocess:
     lidar_type: 1 # Livox Avia LiDAR
