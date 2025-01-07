@@ -42,11 +42,11 @@ dlio:
       cropBoxFilter:
         size: 0.01
       voxelFilter:
-        res: 0.10
+        res: 0.05
 
     keyframe:
       threshD: 0.2
-      threshR: 20.0
+      threshR: 30.0
       minNumPoints: 100
 
     submap:

@@ -43,6 +43,7 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   geometry_msgs
   nav_msgs
+  geodesy
   pcl_ros
   message_generation
 )
@@ -111,6 +112,27 @@ add_executable (dlio_map_node src/dlio/map_node.cc src/dlio/map.cc)
 add_dependencies(dlio_map_node ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
 target_compile_options(dlio_map_node PRIVATE ${OpenMP_FLAGS})
 target_link_libraries(dlio_map_node ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenMP_LIBS} Threads::Threads)
+
+
+add_library(fast_gicp SHARED
+    src/fast_gicp/gicp/lsq_registration.cpp
+    src/fast_gicp/gicp/fast_gicp.cpp
+    src/fast_gicp/gicp/fast_gicp_st.cpp
+    src/fast_gicp/gicp/fast_vgicp.cpp
+)
+target_link_libraries(
+    fast_gicp ${PCL_LIBRARIES}
+)
+target_include_directories(
+    fast_gicp PUBLIC
+    include
+    ${PCL_INCLUDE_DIRS}
+    ${EIGEN3_INCLUDE_DIR}
+)
+
+add_executable(gicp_localizer_node src/localization/localization.cpp)
+target_link_libraries(gicp_localizer_node ${catkin_LIBRARIES} ${PCL_LIBRARIES} fast_gicp)
+
 
 # Binaries
 install( TARGETS dlio_odom_node dlio_map_node

@@ -374,10 +374,10 @@ int main(int argc, char **argv)
 	image_transport::ImageTransport it(n);
 	Twlidar = Eigen::Matrix4d::Identity() ;				//  初始化T为单位阵，如果没有SLAM的里程计输出，默认是固定在lidar系下 
 	subOdom = n.subscribe(odom_topic, 1000, &OdomCallback);			// 订阅FASTLIO2 的里程计输出
-  image_transport::Subscriber subImage = it.subscribe(camera_topic, 1000, &imageCallback); // 订阅图像
-  subCloud = n.subscribe<sensor_msgs::PointCloud2>(lidar_topic, 1000, &pointCloudCallback);
-  pubCloud = n.advertise<sensor_msgs::PointCloud2>(lidar_color_topic, 1);
-  srvSaveMap  = n.advertiseService("/save_map" ,  &saveMapService);   	    // saveMap  发布地图保存服务
+    image_transport::Subscriber subImage = it.subscribe(camera_topic, 1000, &imageCallback); // 订阅图像
+    subCloud = n.subscribe<sensor_msgs::PointCloud2>(lidar_topic, 1000, &pointCloudCallback);
+    pubCloud = n.advertise<sensor_msgs::PointCloud2>(lidar_color_topic, 1);
+    srvSaveMap  = n.advertiseService("/save_map" ,  &saveMapService);   	    // saveMap  发布地图保存服务
 	ros::Rate loop_rate(500);
 
 	while (ros::ok())

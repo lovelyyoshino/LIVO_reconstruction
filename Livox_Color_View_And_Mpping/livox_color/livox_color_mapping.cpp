@@ -36,8 +36,8 @@
 
 using namespace std ;
 
-#define Hmax 720
-#define Wmax 1280
+#define Hmax 1080
+#define Wmax 1440
 #define H Hmax
 #define W Wmax
 
@@ -179,11 +179,11 @@ void DataCallback(const nav_msgs::OdometryConstPtr &path_msg, const sensor_msgs:
 	cv::Mat Y(3, 1, cv::DataType<double>::type);
 
 	pcl::PointCloud<PointType>::Ptr fusion_pcl_ptr(new pcl::PointCloud<PointType>); //放在这里是因为，每次都需要重新初始化
-
+	// std::cout<<"raw_pcl_ptr:"<<raw_pcl_ptr->points.size()<<std::endl;
 	for (int i = 0; i < raw_pcl_ptr->points.size(); i++)
 	{
 		Eigen::Vector3d x_w(raw_pcl_ptr->points[i].x, raw_pcl_ptr->points[i].y, raw_pcl_ptr->points[i].z);
-		Eigen::Vector3d x_lidar =  Twlidar.inverse()  *  x_w   ;
+		Eigen::Vector3d x_lidar =  Twlidar.inverse()  *  x_w;
 		X.at<double>(0, 0) = x_lidar.x();
 		X.at<double>(1, 0) = x_lidar.y();
 		X.at<double>(2, 0) = x_lidar.z();
@@ -193,6 +193,7 @@ void DataCallback(const nav_msgs::OdometryConstPtr &path_msg, const sensor_msgs:
 		// Y是3*1向量，pt.x是Y的第一个值除以第三个值，pt.y是Y的第二个值除以第三个值，为什么是下面这种写法？？
 		pt.x = Y.at<double>(0, 0) / Y.at<double>(2, 0);
 		pt.y = Y.at<double>(1, 0) / Y.at<double>(2, 0);
+		// std::cout<<"py:"<<pt.x<<","<<pt.y<<std::endl;
 		if (pt.x >= 0 && pt.x < W && pt.y >= 0 && pt.y < H && x_lidar.x() > 0) //&& raw_pcl_ptr->points[i].x>0去掉图像后方的点云
 		{
 			PointType p;
@@ -210,7 +211,7 @@ void DataCallback(const nav_msgs::OdometryConstPtr &path_msg, const sensor_msgs:
 
 	fusion_pcl_ptr->width = fusion_pcl_ptr->points.size();
 	fusion_pcl_ptr->height = 1;
-	// std::cout<<  fusion_pcl_ptr->points.size() << std::endl;	
+	// std::cout<< "fusion_pcl_ptr"<< fusion_pcl_ptr->points.size() << std::endl;	
 	sensor_msgs::PointCloud2 fusion_msg;		//  彩色点云
 	pcl::toROSMsg(*fusion_pcl_ptr, fusion_msg);			   //将点云转化为消息才能发布
 	fusion_msg.header.frame_id = frame_id ;			   //   Fastlio2 中 frame-id 为 camera_init
@@ -274,17 +275,17 @@ int main(int argc, char **argv)
 	pubCloud = n.advertise<sensor_msgs::PointCloud2>(lidar_color_topic, 1);			
 
 	message_filters::Subscriber<nav_msgs::Odometry> path_sub_;  
-  message_filters::Subscriber<sensor_msgs::PointCloud2> points_sub_;
-  message_filters::Subscriber<sensor_msgs::Image> image_sub_;
+	message_filters::Subscriber<sensor_msgs::PointCloud2> points_sub_;
+	message_filters::Subscriber<sensor_msgs::Image> image_sub_;
 
 	path_sub_.subscribe(n, odom_topic, 1); 		 //  订阅FASTLIO2 的里程计输出 , queue 为1，维持为最新的数据
-  points_sub_.subscribe(n, lidar_topic, 1);	   //  订阅点云 pointcloud2格式
-  image_sub_.subscribe(n, camera_topic, 1);
+	points_sub_.subscribe(n, lidar_topic, 1);	   //  订阅点云 pointcloud2格式
+	image_sub_.subscribe(n, camera_topic, 1);
 
 	sync_.reset(new Sync(MySyncPolicy(100), path_sub_, points_sub_, image_sub_));			//  时间软同步最大容忍时间为100ms
-  sync_->registerCallback(boost::bind(&DataCallback,  _1, _2, _3));
+	sync_->registerCallback(boost::bind(&DataCallback,  _1, _2, _3));
 
-  srvSaveMap  = n.advertiseService("/save_map" ,  &saveMapService);   	    // saveMap  发布地图保存服务
+	srvSaveMap  = n.advertiseService("/save_map" ,  &saveMapService);   	    // saveMap  发布地图保存服务
 	ros::Rate loop_rate(200);
 
 	while (ros::ok())

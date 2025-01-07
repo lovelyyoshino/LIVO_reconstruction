@@ -1,0 +1,34 @@
+<launch>
+
+  <!-- Topics -->
+  <!-- <param name="/use_sim_time" value="true" /> -->
+
+  <arg name="input_sensor_points_topic" default="/avia/livox/lidar" doc="Sensor points topic"/>
+  <arg name="input_map_points_topic" default="/points_map" doc="Map points topic" />
+  <arg name="output_pose_topic" default="gicp_pose" doc="Estimated self position" />
+  <arg name="output_diagnostics_topic" default="diagnostics" doc="Diagnostic topic" />
+
+  <!-- tf -->
+  <arg name="base_frame" default="robot/odom" doc="Vehicle reference frame" />
+
+  <arg name="resolution" default="2.0" doc="The ND voxel grid resolution" />
+  <arg name="numthreads" default="4" doc="vgicp threads num" />
+  <arg name="leafsize" default="0.05" doc="point map downsample leafsize" />
+
+  <node pkg="direct_lidar_inertial_odometry" type="gicp_localizer_node" name="gicp_localizer_node" output="screen">
+    <remap from="points_raw" to="$(arg input_sensor_points_topic)" />
+    <remap from="pointcloud_map" to="$(arg input_map_points_topic)" />
+    <remap from="gicp_pose" to="$(arg output_pose_topic)" />
+    <remap from="diagnostics" to="$(arg output_diagnostics_topic)" />
+    <param name="base_frame" value="$(arg base_frame)" />
+    <param name="resolution" value="$(arg resolution)" />
+    <param name="numthreads" value="$(arg numthreads)" />
+    <param name="leafsize" value="$(arg leafsize)" />
+    <param name="pcd_path" value="$(env HOME)/iccv2023/dlio_ws/src/PGO/result/Opt_map.pcd" />
+    <param name="utm_offset_x" value="0.0" />
+    <param name="utm_offset_y" value="0.0" />
+    <param name="utm_offset_z" value="0.0" />
+  </node>
+
+
+</launch>

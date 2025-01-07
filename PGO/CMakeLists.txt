@@ -17,7 +17,26 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   cv_bridge
   tf
+  geodesy
+  visualization_msgs
+  message_generation
 )
+
+find_package(Boost 1.54 REQUIRED COMPONENTS
+	system
+	thread
+	chrono
+  timer
+  serialization
+)
+
+add_service_files(FILES
+  SaveMap.srv
+)
+generate_messages(
+   DEPENDENCIES
+   std_msgs
+ )
 
 #find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
@@ -43,30 +62,47 @@ catkin_package(
 )
 
 
-add_executable(ascanRegistration src/scanRegistration.cpp)
-target_link_libraries(ascanRegistration ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 
-add_executable(alaserOdometry src/laserOdometry.cpp)
-target_link_libraries(alaserOdometry ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
+# add_executable(ascanRegistration src/scanRegistration.cpp)
+# target_link_libraries(ascanRegistration ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 
-add_executable(alaserMapping src/laserMapping.cpp)
-target_link_libraries(alaserMapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
+# add_executable(alaserOdometry src/laserOdometry.cpp)
+# target_link_libraries(alaserOdometry ${catkin_LIBRARIES} ${Boost_LIBRARY} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
 
-add_executable(alaserPGO 
-  src/laserPosegraphOptimization.cpp
+# add_executable(alaserMapping src/laserMapping.cpp)
+# target_link_libraries(alaserMapping ${catkin_LIBRARIES} ${Boost_LIBRARY} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
+
+add_executable(alaserPGO_gps
+  src/laserPosegraphOptimization_gps_pcd.cpp
+  include/scancontext/Scancontext.cpp
+)
+target_compile_options(alaserPGO_gps 
+  PRIVATE ${OpenMP_CXX_FLAGS}
+)
+target_link_libraries(alaserPGO_gps 
+  ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES} ${Boost_LIBRARY} 
+  ${OpenMP_CXX_FLAGS}
+  gtsam
+)
+
+
+add_executable(alaserPGO
+  src/laserPosegraphOptimization_loopclose.cpp
+  # src/laserPosegraphOptimization.cpp
   include/scancontext/Scancontext.cpp
 )
 target_compile_options(alaserPGO 
   PRIVATE ${OpenMP_CXX_FLAGS}
 )
 target_link_libraries(alaserPGO 
-  ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES}
+  ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES} ${Boost_LIBRARY}
   ${OpenMP_CXX_FLAGS}
   gtsam
 )
 
-add_executable(kittiHelper src/kittiHelper.cpp)
-target_link_libraries(kittiHelper ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS})
+
+# add_executable(kittiHelper src/kittiHelper.cpp)
+# target_link_libraries(kittiHelper ${catkin_LIBRARIES} ${Boost_LIBRARY} ${PCL_LIBRARIES} ${OpenCV_LIBS})
 
 
 

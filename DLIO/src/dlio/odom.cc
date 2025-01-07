@@ -42,7 +42,7 @@ dlio::OdomNode::OdomNode(ros::NodeHandle node_handle) : nh(node_handle) {
   this->kf_cloud_pub = this->nh.advertise<sensor_msgs::PointCloud2>("kf_cloud", 1, true);
   this->deskewed_pub = this->nh.advertise<sensor_msgs::PointCloud2>("deskewed", 1, true);
   this->all_kf_cloud_pub_ = this->nh.advertise<sensor_msgs::PointCloud2>("/cloud_keyframe", 1, true);
-  this->livox_pub    = this->nh.advertise<sensor_msgs::PointCloud2>("livox2dlio", 1, true);
+  this->livox_pub    = this->nh.advertise<sensor_msgs::PointCloud2>("/livox2dlio", 1, true);
 
   this->publish_timer = this->nh.createTimer(ros::Duration(0.04), &dlio::OdomNode::publishPose, this);
 
@@ -1034,7 +1034,6 @@ void dlio::OdomNode::callbackImu(const sensor_msgs::Imu::ConstPtr &imu_raw) {
 }
 
 void dlio::OdomNode::callbackLivox(const livox_ros_driver::CustomMsgConstPtr& livox) {
-
   // convert custom livox message to pcl pointcloud
   pcl::PointCloud<LivoxPoint>::Ptr cloud (new pcl::PointCloud<LivoxPoint>);
 
